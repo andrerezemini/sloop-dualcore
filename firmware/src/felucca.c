@@ -11,6 +11,7 @@
 #include "fm1_audio.h"
 #include "fm1_adc.h"
 #include "fm1_lcd_hw.h"
+#include "fm1_cpu1.h"      /* the second core (X0X): started in main.c, used by the render later */
 #include "felucca_tables.h"
 
 #include "libc.c"
@@ -28,6 +29,9 @@
 #endif
 #ifndef FELUCCA_OTA_DRYRUN
 #define FELUCCA_OTA_DRYRUN 0     /* 1 = stage, ask "success", then undo: no record, no reset */
+#endif
+#ifndef FELUCCA_CPU1
+#define FELUCCA_CPU1 1          /* the second core (cpu1.c); 0: one core, as SLOOP 2.5 */
 #endif
 #ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
@@ -52,6 +56,7 @@
 #include "arranger.c"
 #include "seq.c"
 #include "audio.c"
+#include "cpu1.c"           /* the second core: boot, self-test, state (ABOUT, console) */
 #include "panel.c"
 #include "ui.c"
 #include "ui_song.c"

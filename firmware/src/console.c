@@ -175,6 +175,10 @@ static void con_status(void)
     con_puts("\r\n");
     con_kv("uptime_ms", (int32_t)fm1_ms);
     con_kv("cpu_pct", (int32_t)(song.cpu_q8 * 100u / 256u));
+#if FELUCCA_CPU1
+    con_kv("cpu1", (int32_t)cpu1_state);                 /* 1 did not start, 2 self-test failed, 3 running (cpu1.c) */
+    con_kx("cpu1_trace", fm1_c1_trace);
+#endif
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("voices_shed", (int32_t)shed_count);
     con_kv("voices_given_up", (int32_t)voice_kills);
