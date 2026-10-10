@@ -1,11 +1,13 @@
-# sloop-dualcore
+# sloop-lab
 
-> **SLOOP on both cores of the FM-1.** A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) by isod89:
-> SLOOP 2.5 with the M-VAVE FM-1's second processor core brought up at boot and the audio render split across
-> both cores, with a bit-identical result. What the fork adds, its status, how to build and install it:
-> [DUALCORE.md](DUALCORE.md). Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the
-> second core's HAL from [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre
-> Rezemini, written with Claude (the commits say so). GPL-3.0-only, as all of them.
+> **SLOOP, with experiments.** A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) by isod89, the
+> groovebox firmware for the M-VAVE FM-1, where additions are tried as short series of patches that can be
+> re-applied on each SLOOP release and offered upstream. The first, on branch `dualcore`: SLOOP 2.5 with the
+> FM-1's second processor core brought up at boot and the audio render split across both cores, with a
+> bit-identical result. What it adds, its status, how to build and install it: [DUALCORE.md](DUALCORE.md).
+> Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
+> [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
+> Claude (the commits say so). GPL-3.0-only, as all of them.
 >
 > Everything below this line is SLOOP's own README, unchanged: its links point at SLOOP's site, editor and
 > releases, not at this fork's.

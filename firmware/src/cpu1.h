@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore) */
+ * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-lab) */
 /* The second core as the render sees it: one job at a time.
  *   cpu1_run(fn, arg)  hands a job over: 1 = core 1 took it, 0 = run it yourself (no second core, or held)
  *   cpu1_wait()        0 = the job is done; -1 = core 1 did not finish in time: it is held from now on and

@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore)
+# Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-lab)
 # The render split over the two cores (fx.c mix_units) under every mode of the host double of core 1
 # (tests/cpu1_host.c). The golden renders (tests/regress.c) and tests/mix_split_test.c must give the same hashes
 # with CORES=1 (the job inline, deferred to the wait), CORES=2 (a thread), CORES=2 CHAOS=7 (a slow, erratic

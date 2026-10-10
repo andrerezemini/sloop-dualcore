@@ -1,9 +1,9 @@
-# sloop-dualcore (branch `dualcore`): project memory
+# sloop-lab, branch `dualcore`: project memory
 
 This checkout is a **thin fork** of [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1) (SLOOP, a
 groovebox firmware for the M-VAVE FM-1). Branch `dualcore` adds the FM-1's second processor core to
 SLOOP 2.5 as a short series of patches; `main` is upstream, untouched. Public fork:
-https://github.com/andrerezemini/sloop-dualcore. The owner's planning documents (Portuguese) live in a private
+https://github.com/andrerezemini/sloop-lab. The owner's planning documents (Portuguese) live in a private
 repository, not here. Status and the patch table: [DUALCORE.md](DUALCORE.md).
 
 ## Rules of this fork
