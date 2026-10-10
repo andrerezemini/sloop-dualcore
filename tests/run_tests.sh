@@ -151,6 +151,10 @@ run "regression: golden renders, health, voices, CPU budget" "$OUT/regress" test
 
 run "regression: target cost of the render loops" python3 tests/target_budget.py \
     build/felucca.dis tests/target_budget.txt
+# the render split over the two cores (fx.c mix_units): the golden renders and tests/mix_split_test.c (three
+# FORMANT, FM6 or PHYS parts, S&H LFOs, mutes, the drums through the SLICER and the FILTER, the metronome: every
+# split of the units against none) under every mode of the host double of core 1, and under ThreadSanitizer
+run "the render split over the two cores: every mode of the second core's host double (tests/cpu1_modes.sh)" sh tests/cpu1_modes.sh
 
 run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/install_test.py
 

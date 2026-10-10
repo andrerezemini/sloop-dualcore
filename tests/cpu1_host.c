@@ -10,6 +10,7 @@
  *                       so nothing may depend on how fast core 1 is
  *   CPU1_TIMEOUT_AT=K   the K-th job is lost: the double never runs it, cpu1_wait returns -1 and core 1 is
  *                       held from then on (cpu1_on 0, cpu1_run 0): the caller's fallback path, once
+ *   CPU1_UNITS=mask     the render units handed to core 1 (cpu1.h cpu1_units): 0 none, 15 all that may go
  * cpu1_host_jobs() and cpu1_host_timeouts() tell a test what happened. Nothing of the firmware changes. */
 #include <pthread.h>
 #include <stdlib.h>
@@ -67,6 +68,9 @@ static void cpu1_host_init(void)
     c1h.seed = (uint32_t)c1h.chaos * 7919u + 1u;
     e = getenv("CPU1_TIMEOUT_AT");
     c1h.timeout_at = e ? (uint32_t)atoi(e) : 0;
+    e = getenv("CPU1_UNITS");
+    if (e)
+        cpu1_units = atoi(e);
     c1h.on = 1;
     pthread_mutex_init(&c1h.mu, 0);
     pthread_cond_init(&c1h.cv, 0);

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-fm1) */
 /* The second core of the AC7911: started at power-on (main.c), proved with a self-test job, reported on
- * ABOUT ("2 CORES" / "1 CORE") and in the console (cpu1, cpu1_trace). The render does not use it yet:
- * that is the next patch (fx.c: the parts and the drums in units, a set of them on core 1). The HAL is
- * X0X's (hal/fm1_cpu1.h): one job at a time, core 0 hands it over and waits; the waiting loop lives in
- * RAM (.c1_text), so an idle core 1 never fetches from the flash and flash writes need no parking.
+ * ABOUT ("2 CORES" / "1 CORE") and in the console (cpu1, cpu1_trace, cpu1_timeouts, cpu1_stack_free). The
+ * render hands it a share of its units each block (fx.c mix_units, through cpu1.h's cpu1_run / cpu1_wait).
+ * The HAL is X0X's (hal/fm1_cpu1.h): one job at a time, core 0 hands it over and waits; the waiting loop
+ * lives in RAM (.c1_text), so an idle core 1 never fetches from the flash and flash writes need no parking.
  * FELUCCA_CPU1=0 builds without any of it. */
 enum { CPU1_OFF, CPU1_NOSTART, CPU1_FAILED, CPU1_OK };   /* not built / did not report in / self-test wrong / running */
 static uint8_t cpu1_state = CPU1_OFF;
@@ -60,6 +60,16 @@ static void cpu1_boot(void)
 }
 
 static const char *cpu1_label(void) { return cpu1_state == CPU1_OK ? "2 CORES" : "1 CORE"; }
+
+/* bytes of core 1's user stack never written: fm1_cpu1_start filled it with a mark; the render on core 1
+ * (fx.c mix_units: FM6, PHYS, GRAIN go deepest) eats it from the top. Console: cpu1_stack_free */
+static uint32_t cpu1_stack_free(void)
+{
+    uint32_t i;
+    for (i = 0; i < FM1_C1_STACK_WORDS && _c1_ustack[i] == FM1_C1_MARK; i++)
+        ;
+    return i * 4u;
+}
 #else
 static void cpu1_boot(void) {}
 static const char *cpu1_label(void) { return "1 CORE"; }

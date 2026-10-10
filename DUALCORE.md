@@ -16,9 +16,9 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 | 1 | `hal/fm1_cpu1.{h,S}` from X0X; `fm1_guard_pc_open`, `fm1_guard_top_locked`; the second core held before a reboot and before the loader (`fm1_sys.h`) | done, builds |
 | 2 | `.c1_text` in the linker script and `tools/build.py`; the loop copied to RAM and the core started at boot (`main.c`, `cpu1.c`) with a self-test job; "2 CORES" / "1 CORE" on ABOUT; `cpu1`, `cpu1_trace` in the console; `FELUCCA_CPU1=0` builds the old way | done, builds; **not yet run on an FM-1** |
 | 2b | **the host double of core 1** (`firmware/src/cpu1.h` API: `cpu1_run` / `cpu1_wait` / `cpu1_on`; `tests/cpu1_host.c`): `CORES=1` runs a job inline at the wait, `CORES=2` on a POSIX thread, `CHAOS=N` with random delays, `CPU1_TIMEOUT_AT=K` loses a job and holds the core; `tests/cpu1_test.c` in all modes and under ThreadSanitizer, from `tests/run_tests.sh` | done |
-| 3 | `fx.c`: the three parts and the drums as render units with private accumulator sets, handed to core 1 through `cpu1_run`; the sums commute, so `tests/golden.txt` must not change, with `CORES=1` and `CORES=2` | next |
-| 4 | a static split (drums + one part on core 1), the 8 ms timeout fallback, the load figures | |
-| 5 | a threaded host test of the hand-off (TSan); perf patterns; measurements on the device | |
+| 3 | **the render split** (`fx.c`): the three parts and the drums as render units (`mix_part`, `mix_drums`, `mix_units`), each adding into an accumulator set of its own (the dry mix and the three sends); core 1's share handed over through `cpu1_run` before this core renders its own, added after `cpu1_wait`; the 8 ms timeout fallback (core 1 held, its units rendered here once). FM6's operator buses per part (`fm6_part_t`, in the engine arena, `fm6_core.c`, `eng_fm6.c`, `engines.c`). What stays on core 0 (`units_split`): two FORMANT parts together (one breath-noise xorshift), a part whose LFO wraps this block or whose PHYS model changed under a note (`rng()`, so the draws keep their order). `cpu1_units` (`cpu1.h`) forces a split: 0 none, a mask, -1 the firmware's choice | done: the 182 golden hashes unchanged under every mode of the host double and with no split (`tests/cpu1_modes.sh`); `tests/mix_split_test.c` (three FORMANT, FM6 or PHYS parts, S&H LFOs, mutes, the drums through the SLICER and the FILTER, the metronome) gives the same output for every split of the units, and no race under ThreadSanitizer; builds; **not yet run on an FM-1** |
+| 4 | the static split is in (core 1: the last part and the drums). Still to do: the menu 2ND CORE ON/OFF (over `cpu1_units`), the load figures on INFO and the console (C1 busy, core 0's wait), measurements on the device | next |
+| 5 | perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb); the measurements on the device in this file | |
 | 6 | the greedy per-block split by measured cost | |
 
 Later, outside the dual-core series: reverb and delay settings that change per song section (after shifl's
@@ -26,19 +26,31 @@ song fragments), as a separate patch set.
 
 ## Testing on the Mac first
 
-The render will reach core 1 only through `cpu1.h`'s three calls, and the host tests have their own
+The render reaches core 1 only through `cpu1.h`'s three calls, and the host tests have their own
 definitions of them (`tests/cpu1_host.c`), so the same code runs on the Mac in every way the device can
 behave: `CORES=1` (inline, the job deferred to the wait), `CORES=2` (a real thread), `CORES=2 CHAOS=7` (a
-slow, erratic thread), `CPU1_TIMEOUT_AT=K` (a lost job: the fallback and the hold), and `CORES=2` under
-ThreadSanitizer. A render that gives the same `golden.txt` hashes in all of them is bit-exact and race-free
-as far as the host can tell; the device then answers only timing.
+slow, erratic thread), `CPU1_TIMEOUT_AT=K` (a lost job: the fallback and the hold), `CPU1_UNITS=mask` (a
+forced split: 0 none, 15 every unit that may go), and `CORES=2` under ThreadSanitizer. `tests/cpu1_modes.sh`
+(run by `tests/run_tests.sh`) runs the golden renders and `tests/mix_split_test.c` under all of them: a render
+that gives the same hashes in every mode is bit-exact and race-free as far as the host can tell; the device then
+answers only timing.
+
+What a block does now (`fx.c mix_block`): the sequencer's events and the DUCK on core 0; then the split for
+this block (`units_split`); core 1's units handed over (`acc[1]`, its own `part_buf`); core 0's units into
+`acc[0]` meanwhile; the wait (a timeout holds core 1 and renders its units here); `acc[0] += acc[1]`; then
+the buses, DUST, PUNCH, the DJ filter and the master, serial as before. Nothing but the render runs while
+core 1 works: the main loop is preempted by the audio interrupt, and TIMER5 only scans the panel and feeds
+USB audio.
 
 ## What the device will tell
 
 On a first boot of this build: ABOUT (hold HOME, SYSTEM, ABOUT) shows **2 CORES** when core 1 started and
 passed its self-test, **1 CORE** otherwise; the console (`fm1t`, USB SERIAL on) prints `cpu1` (0 not built,
-1 did not report in within 20 ms, 2 answered wrong or late, 3 running) and `cpu1_trace` (0xC1000001: reached
-its entry; 0xC1000002: reached its loop). Audio is untouched by patches 1 and 2: SLOOP 2.5 as released.
+1 did not report in within 20 ms, 2 answered wrong or late, 3 running), `cpu1_trace` (0xC1000001: reached
+its entry; 0xC1000002: reached its loop), `cpu1_timeouts` (blocks core 1 did not finish in 8 ms: after the
+first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|auto` sets it live) and `cpu1_stack_free`
+(bytes of core 1's 2,816 B stack the render never reached: it must stay well above 0 on the heaviest patterns). From patch 3 on, with
+2 CORES the last synth part and the drums render on core 1; the audio is bit for bit SLOOP 2.5's.
 
 ## Installing a build of this branch on an FM-1
 
@@ -58,7 +70,9 @@ hold OCT- while switching on, then install again.
 ## Building
 
 As SLOOP's `BUILDING.md`; on macOS run `sh build.sh` with Docker up. Memory of this build against 2.5:
-RAM `.data+.bss` +3.1 KiB (the core's two stacks), image +250 B, `.c1_text` 60 B in RAMTEXT.
+RAM `.data+.bss` 88,456 B of 98,304 (+3.6 KiB: the core's two stacks, the second accumulator set, the
+second part buffer), pool unchanged (the FM6 buses fit in the engine arena), image 566,432 B (+1,232 B),
+`.c1_text` 60 B in RAMTEXT.
 
 ## Licence and credits
 
