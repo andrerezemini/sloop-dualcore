@@ -45,7 +45,8 @@ USB audio.
 ## What the device will tell
 
 On a first boot of this build: ABOUT (hold HOME, SYSTEM, ABOUT) shows **2 CORES** when core 1 started and
-passed its self-test, **1 CORE** otherwise; the console (`fm1t`, USB SERIAL on) prints `cpu1` (0 not built,
+passed its self-test, **1 CORE** otherwise; the serial console (MENU > AUDIO > USB SERIAL ON, restart, then any
+serial terminal on the USB port, e.g. `screen /dev/tty.usbmodem* 115200`, and `status`) prints `cpu1` (0 not built,
 1 did not report in within 20 ms, 2 answered wrong or late, 3 running), `cpu1_trace` (0xC1000001: reached
 its entry; 0xC1000002: reached its loop), `cpu1_timeouts` (blocks core 1 did not finish in 8 ms: after the
 first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|auto` sets it live), `cpu1_busy_pct`

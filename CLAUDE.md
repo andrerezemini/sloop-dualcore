@@ -103,8 +103,9 @@ python3 web/make_site.py build/felucca.fwsc dev ../sloop-site && cd ../sloop-sit
 # Chrome or Edge: http://localhost:8000/webapp/installer/
 ```
 
-First boot checklist: ABOUT (hold HOME, SYSTEM, ABOUT) says **2 CORES**; the console (`fm1t`, USB SERIAL on)
-prints `cpu1 = 3` and `cpu1_trace = 0xC1000002`. "1 CORE" with `cpu1_trace 0` means core 1 never reached
+First boot checklist: ABOUT (hold HOME, SYSTEM, ABOUT) says **2 CORES**; the serial console (MENU > AUDIO >
+USB SERIAL ON, restart; then `screen /dev/tty.usbmodem* 115200` on the Mac, type `status`; there is no `fm1t`
+tool in SLOOP's tree, the console is a plain USB CDC port) prints `cpu1 = 3` and `cpu1_trace = 0xC1000002`. "1 CORE" with `cpu1_trace 0` means core 1 never reached
 its entry; `0xC1000001` means it reached the entry but not its loop. Then play: `cpu1_timeouts` must stay 0
 (one means core 1 was held and SLOOP fell back to one core), `cpu1_stack_free` well above 0 on the heaviest
 patterns (core 1's stack is 2,816 B), `cpu1_busy_pct` and `cpu1_wait_pct` plausible (busy well under 100, wait
