@@ -17,3 +17,7 @@ static int cpu1_on(void);
  * mask of them, bit k = synth part k, bit NPART = the drums; 0 = none (the menu's 2ND CORE OFF, the tests:
  * CPU1_UNITS=mask in the host double). Whatever the value, the output is the same, bit for bit */
 static int32_t cpu1_units = -1;
+/* a 24 MHz tick counter for the load figures (fx.c cpu1_load_half): the device's TIMER4, readable by both
+ * cores; the host double's is 0 (its figures mean nothing) */
+#define CPU1_TICKS_PER_US 24u
+static uint32_t cpu1_ticks(void);

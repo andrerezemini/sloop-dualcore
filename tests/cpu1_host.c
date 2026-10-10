@@ -11,6 +11,7 @@
  *   CPU1_TIMEOUT_AT=K   the K-th job is lost: the double never runs it, cpu1_wait returns -1 and core 1 is
  *                       held from then on (cpu1_on 0, cpu1_run 0): the caller's fallback path, once
  *   CPU1_UNITS=mask     the render units handed to core 1 (cpu1.h cpu1_units): 0 none, 15 all that may go
+ * cpu1_ticks() is 0 here: the load figures (fx.c cpu1_load_half) are the device's.
  * cpu1_host_jobs() and cpu1_host_timeouts() tell a test what happened. Nothing of the firmware changes. */
 #include <pthread.h>
 #include <stdlib.h>
@@ -77,6 +78,7 @@ static void cpu1_host_init(void)
 }
 
 static int cpu1_on(void) { cpu1_host_init(); return c1h.on; }
+static uint32_t cpu1_ticks(void) { return 0; }
 static uint32_t cpu1_host_jobs(void) { return c1h.jobs; }
 static uint32_t cpu1_host_timeouts(void) { return c1h.timeouts; }
 static int cpu1_host_mode(void) { cpu1_host_init(); return c1h.mode; }

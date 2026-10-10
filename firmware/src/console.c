@@ -180,6 +180,8 @@ static void con_status(void)
     con_kx("cpu1_trace", fm1_c1_trace);
     con_kv("cpu1_timeouts", (int32_t)cpu1_timeouts);
     con_kv("cpu1_units", cpu1_units);                    /* the render units it gets: -1 its share, else a mask (fx.c) */
+    con_kv("cpu1_busy_pct", (int32_t)(cpu1_busy_q8 * 100u / 256u));   /* its time in the render, of a half (fx.c) */
+    con_kv("cpu1_wait_pct", (int32_t)(cpu1_wait_q8 * 100u / 256u));   /* core 0's time waiting for it */
     con_kv("cpu1_stack_free", (int32_t)cpu1_stack_free());   /* bytes of its stack the render never reached */
 #endif
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);

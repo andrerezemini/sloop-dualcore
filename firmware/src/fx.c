@@ -530,9 +530,25 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
         mix_drums(n, mx);
 }
 
+/* the load figures: core 1's time in its job and core 0's time waiting for it, in ticks over a half (cpu1.h
+ * cpu1_ticks; the job's are written by core 1, read and cleared by core 0 while core 1 is idle), then as 1/256
+ * of the half, smoothed as song.cpu_q8 is (audio.c calls cpu1_load_half after each half; console.c shows them) */
+static uint32_t cpu1_job_ticks, cpu1_wait_ticks, cpu1_busy_q8, cpu1_wait_q8;
+static void cpu1_load_half(uint32_t half_us)
+{
+    uint32_t per = half_us * CPU1_TICKS_PER_US / 256u;  /* ticks per 1/256 of the half */
+    if (!per)
+        per = 1;
+    cpu1_busy_q8 = (cpu1_busy_q8 * 15u + cpu1_job_ticks / per) / 16u;
+    cpu1_wait_q8 = (cpu1_wait_q8 * 15u + cpu1_wait_ticks / per) / 16u;
+    cpu1_job_ticks = cpu1_wait_ticks = 0;
+}
+
 static void cpu1_units_job(uint32_t arg)                /* core 1's job: the units of arg & 0xFF, n = arg >> 8 */
 {
+    uint32_t t0 = cpu1_ticks();
     mix_units(arg & 0xFFu, arg >> 8, &acc[1], part_buf[1]);
+    cpu1_job_ticks += cpu1_ticks() - t0;
 }
 
 /* the units core 1 renders this block: the last part and the drums (cpu1_units when set: the menu, the tests),
@@ -572,7 +588,10 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     mix_units(U_ALL & ~c1, n, &acc[0], part_buf[0]);    /* this core's units, meanwhile */
     if (c1) {
-        if (cpu1_wait() != 0) {                         /* core 1 did not finish in time: held from now on (cpu1.h);
+        uint32_t w0 = cpu1_ticks();
+        int late = cpu1_wait();
+        cpu1_wait_ticks += cpu1_ticks() - w0;
+        if (late) {                                     /* core 1 did not finish in time: held from now on (cpu1.h);
                                                          * its units here, once (what it half did is this block's glitch) */
             for (i = 0; i < n; i++)
                 acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;

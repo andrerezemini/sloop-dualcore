@@ -15,6 +15,7 @@ static volatile uint32_t cpu1_test_out;
 
 /* cpu1.h's API over the HAL: the render hands its jobs through these */
 static int cpu1_on(void) { return cpu1_state == CPU1_OK && fm1_c1_on; }
+static uint32_t cpu1_ticks(void) { return fm1_ticks(); }
 static int cpu1_run(cpu1_job_t fn, uint32_t arg) { return cpu1_state == CPU1_OK ? fm1_cpu1_run(fn, arg) : 0; }
 static int cpu1_wait(void)
 {
@@ -59,7 +60,11 @@ static void cpu1_boot(void)
     cpu1_state = CPU1_OK;
 }
 
-static const char *cpu1_label(void) { return cpu1_state == CPU1_OK ? "2 CORES" : "1 CORE"; }
+static const char *cpu1_label(void)                      /* ABOUT: the hardware's state, and the menu's switch (short:
+                                                          * it shares its row with the licence line) */
+{
+    return cpu1_state != CPU1_OK ? "1 CORE" : cpu1_units ? "2 CORES" : "C1 OFF";
+}
 
 /* bytes of core 1's user stack never written: fm1_cpu1_start filled it with a mark; the render on core 1
  * (fx.c mix_units: FM6, PHYS, GRAIN go deepest) eats it from the top. Console: cpu1_stack_free */
@@ -76,4 +81,5 @@ static const char *cpu1_label(void) { return "1 CORE"; }
 static int cpu1_on(void) { return 0; }
 static int cpu1_run(cpu1_job_t fn, uint32_t arg) { (void)fn; (void)arg; return 0; }
 static int cpu1_wait(void) { return 0; }
+static uint32_t cpu1_ticks(void) { return 0; }
 #endif

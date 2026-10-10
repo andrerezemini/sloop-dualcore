@@ -17,8 +17,8 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 | 2 | `.c1_text` in the linker script and `tools/build.py`; the loop copied to RAM and the core started at boot (`main.c`, `cpu1.c`) with a self-test job; "2 CORES" / "1 CORE" on ABOUT; `cpu1`, `cpu1_trace` in the console; `FELUCCA_CPU1=0` builds the old way | done, builds; **not yet run on an FM-1** |
 | 2b | **the host double of core 1** (`firmware/src/cpu1.h` API: `cpu1_run` / `cpu1_wait` / `cpu1_on`; `tests/cpu1_host.c`): `CORES=1` runs a job inline at the wait, `CORES=2` on a POSIX thread, `CHAOS=N` with random delays, `CPU1_TIMEOUT_AT=K` loses a job and holds the core; `tests/cpu1_test.c` in all modes and under ThreadSanitizer, from `tests/run_tests.sh` | done |
 | 3 | **the render split** (`fx.c`): the three parts and the drums as render units (`mix_part`, `mix_drums`, `mix_units`), each adding into an accumulator set of its own (the dry mix and the three sends); core 1's share handed over through `cpu1_run` before this core renders its own, added after `cpu1_wait`; the 8 ms timeout fallback (core 1 held, its units rendered here once). FM6's operator buses per part (`fm6_part_t`, in the engine arena, `fm6_core.c`, `eng_fm6.c`, `engines.c`). What stays on core 0 (`units_split`): two FORMANT parts together (one breath-noise xorshift), a part whose LFO wraps this block or whose PHYS model changed under a note (`rng()`, so the draws keep their order). `cpu1_units` (`cpu1.h`) forces a split: 0 none, a mask, -1 the firmware's choice | done: the 182 golden hashes unchanged under every mode of the host double and with no split (`tests/cpu1_modes.sh`); `tests/mix_split_test.c` (three FORMANT, FM6 or PHYS parts, S&H LFOs, mutes, the drums through the SLICER and the FILTER, the metronome) gives the same output for every split of the units, and no race under ThreadSanitizer; builds; **not yet run on an FM-1** |
-| 4 | the static split is in (core 1: the last part and the drums). Still to do: the menu 2ND CORE ON/OFF (over `cpu1_units`), the load figures on INFO and the console (C1 busy, core 0's wait), measurements on the device | next |
-| 5 | perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb); the measurements on the device in this file | |
+| 4 | **the switch and the figures**: MENU > SYSTEM > **2ND CORE** ON / OFF (`ui_menu.c`; a bit of the settings word in `panel.c`, kept across restarts, old settings read as ON; live: the next block renders so, and the sound is the same either way); core 1's time in its job and core 0's time waiting for it, measured in `fx.c` with TIMER4 and smoothed per half as the CPU figure is (`cpu1_load_half`, called from the audio interrupt); on the console: `cpu1_busy_pct`, `cpu1_wait_pct`; ABOUT says `C1 OFF` when switched off. The INFO page keeps its one CPU column (core 0's load): it has no free column, so the figures live on the console | done, builds; **not yet run on an FM-1** |
+| 5 | the first run on the device (the checklist below), then perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb) and the measurements in this file, with 2ND CORE ON and OFF | next |
 | 6 | the greedy per-block split by measured cost | |
 
 Later, outside the dual-core series: reverb and delay settings that change per song section (after shifl's
@@ -48,9 +48,12 @@ On a first boot of this build: ABOUT (hold HOME, SYSTEM, ABOUT) shows **2 CORES*
 passed its self-test, **1 CORE** otherwise; the console (`fm1t`, USB SERIAL on) prints `cpu1` (0 not built,
 1 did not report in within 20 ms, 2 answered wrong or late, 3 running), `cpu1_trace` (0xC1000001: reached
 its entry; 0xC1000002: reached its loop), `cpu1_timeouts` (blocks core 1 did not finish in 8 ms: after the
-first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|auto` sets it live) and `cpu1_stack_free`
-(bytes of core 1's 2,816 B stack the render never reached: it must stay well above 0 on the heaviest patterns). From patch 3 on, with
-2 CORES the last synth part and the drums render on core 1; the audio is bit for bit SLOOP 2.5's.
+first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|auto` sets it live), `cpu1_busy_pct`
+and `cpu1_wait_pct` (core 1's share of a half spent rendering, core 0's share spent waiting for it) and
+`cpu1_stack_free` (bytes of core 1's 2,816 B stack the render never reached: it must stay well above 0 on the
+heaviest patterns). With 2 CORES the last synth part and the drums render on core 1; the audio is bit for bit
+SLOOP 2.5's. MENU > SYSTEM > 2ND CORE switches the split off and on while playing: `cpu_pct` (the console, or
+INFO on the SYSTEM page) should drop with it on, by roughly the drums' and one part's share.
 
 ## Installing a build of this branch on an FM-1
 
@@ -70,9 +73,9 @@ hold OCT- while switching on, then install again.
 ## Building
 
 As SLOOP's `BUILDING.md`; on macOS run `sh build.sh` with Docker up. Memory of this build against 2.5:
-RAM `.data+.bss` 88,456 B of 98,304 (+3.6 KiB: the core's two stacks, the second accumulator set, the
-second part buffer), pool unchanged (the FM6 buses fit in the engine arena), image 566,432 B (+1,232 B),
-`.c1_text` 60 B in RAMTEXT.
+RAM `.data+.bss` 88,472 B of 98,304 (+3.6 KiB: the core's two stacks, the second accumulator set, the
+second part buffer, the load counters), pool unchanged (the FM6 buses fit in the engine arena), image 567,296 B
+(+2,096 B), `.c1_text` 60 B in RAMTEXT.
 
 ## Licence and credits
 
