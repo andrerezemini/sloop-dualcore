@@ -15,6 +15,13 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 ---
 
+> **This is the `dualcore` fork of SLOOP** ([andrerezemini/sloop-fm1](https://github.com/andrerezemini/sloop-fm1)):
+> SLOOP 2.5 with the FM-1's second processor core brought up at boot and, patch by patch, the audio render
+> split across both cores with a bit-identical result. Everything below is SLOOP's own README, unchanged.
+> What the fork adds, its status, how to build and install it: [DUALCORE.md](DUALCORE.md). Upstream:
+> [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1) by isod89; Felucca by Leo Kuroshita; the second
+> core's HAL from [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal.
+
 SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths and a drum machine** with 16 sounds on the white keys, twelve synthesis engines, 153 sounds, 37 drum kits, your own samples, a song mode you play with your hands, USB audio, MIDI in on the jack and MIDI clock — and now **physical models** (guitars, sitar, bells, hand drums), a **noise** engine, **six-operator FM with DX7 patches**, **parameter locks**, **micro timing**, **fills**, a **quick chain** of sections and the **sequencer to MIDI out**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
 > **Status:** 2.5 (two new engines, PHYS and NOISE, 77 new sounds, a drum synth, DX7 cartridges in one go, MIDI CCs, 48 kHz USB audio, and the fixes of 2.4.1). Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
