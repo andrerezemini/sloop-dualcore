@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Charles Vestal: from X0X (github.com/charlesvestal/fm1-x0x, commit 00bff73),
  * after Melodee's dual-core audio by Kerem Kilic (github.com/keremimo/melodee). Brought into SLOOP
- * unchanged but for this notice (the SLOOP dualcore branch, github.com/andrerezemini/sloop-fm1). */
+ * unchanged but for this notice (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore). */
 /* The AC79's second core: its entry, as the AC79 SDK's cpu.a/startup.S.o (and Melodee's dual-core
  * audio) have it: interrupts off, no interrupt configuration, its own user and supervisor stacks,
  * then out of the start-up interrupt into fm1_c1_main (in RAM, fm1_cpu1.h), which never returns.

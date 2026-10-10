@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-fm1) */
+ * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore) */
 /* The second core of the AC7911: started at power-on (main.c), proved with a self-test job, reported on
  * ABOUT ("2 CORES" / "1 CORE") and in the console (cpu1, cpu1_trace, cpu1_timeouts, cpu1_stack_free). The
  * render hands it a share of its units each block (fx.c mix_units, through cpu1.h's cpu1_run / cpu1_wait).

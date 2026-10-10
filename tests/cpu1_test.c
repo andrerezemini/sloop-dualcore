@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-fm1) */
+ * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore) */
 /* The host double of the second core (tests/cpu1_host.c): a hand-off and its result, 20000 jobs with exact
  * totals through the caller's fallback pattern, the thread (CORES=2), the deferred job (CORES=1), the lost job
  * and the hold (CPU1_TIMEOUT_AT). tests/run_tests.sh runs it as CORES=1, CORES=2, CORES=2 CHAOS=7,

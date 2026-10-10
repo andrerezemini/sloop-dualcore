@@ -1,4 +1,16 @@
-<p align="center"><img src="assets/logo/sloop-logo.png" alt="SLOOP" width="420"></p>
+# sloop-dualcore
+
+> **SLOOP on both cores of the FM-1.** A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) by isod89:
+> SLOOP 2.5 with the M-VAVE FM-1's second processor core brought up at boot and the audio render split across
+> both cores, with a bit-identical result. What the fork adds, its status, how to build and install it:
+> [DUALCORE.md](DUALCORE.md). Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the
+> second core's HAL from [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre
+> Rezemini, written with Claude (the commits say so). GPL-3.0-only, as all of them.
+>
+> Everything below this line is SLOOP's own README, unchanged: its links point at SLOOP's site, editor and
+> releases, not at this fork's.
+
+---
 
 <p align="center"><b>A live groovebox firmware for the M-VAVE FM-1 — for any style.</b><br>
 Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments.</p>
@@ -12,15 +24,6 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 <a href="../../releases">Releases</a> ·
 <a href="../../issues">Report a bug</a>
 </p>
-
----
-
-> **This is the `dualcore` fork of SLOOP** ([andrerezemini/sloop-fm1](https://github.com/andrerezemini/sloop-fm1)):
-> SLOOP 2.5 with the FM-1's second processor core brought up at boot and, patch by patch, the audio render
-> split across both cores with a bit-identical result. Everything below is SLOOP's own README, unchanged.
-> What the fork adds, its status, how to build and install it: [DUALCORE.md](DUALCORE.md). Upstream:
-> [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1) by isod89; Felucca by Leo Kuroshita; the second
-> core's HAL from [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal.
 
 SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths and a drum machine** with 16 sounds on the white keys, twelve synthesis engines, 153 sounds, 37 drum kits, your own samples, a song mode you play with your hands, USB audio, MIDI in on the jack and MIDI clock — and now **physical models** (guitars, sitar, bells, hand drums), a **noise** engine, **six-operator FM with DX7 patches**, **parameter locks**, **micro timing**, **fills**, a **quick chain** of sections and the **sequencer to MIDI out**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 

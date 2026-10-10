@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-fm1) */
+ * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-dualcore) */
 /* The second core on the host: firmware/src/cpu1.h's API for the tests, so the render that hands jobs to
  * core 1 on the FM-1 runs on the Mac in three ways:
  *   CORES=1 (default)   the job runs on this thread, but only at cpu1_wait: what the caller does between
