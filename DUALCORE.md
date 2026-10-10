@@ -15,13 +15,23 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 |---|---|---|
 | 1 | `hal/fm1_cpu1.{h,S}` from X0X; `fm1_guard_pc_open`, `fm1_guard_top_locked`; the second core held before a reboot and before the loader (`fm1_sys.h`) | done, builds |
 | 2 | `.c1_text` in the linker script and `tools/build.py`; the loop copied to RAM and the core started at boot (`main.c`, `cpu1.c`) with a self-test job; "2 CORES" / "1 CORE" on ABOUT; `cpu1`, `cpu1_trace` in the console; `FELUCCA_CPU1=0` builds the old way | done, builds; **not yet run on an FM-1** |
-| 3 | `fx.c`: the three parts and the drums as render units with private accumulator sets; the sums commute, so `tests/golden.txt` must not change | next |
+| 2b | **the host double of core 1** (`firmware/src/cpu1.h` API: `cpu1_run` / `cpu1_wait` / `cpu1_on`; `tests/cpu1_host.c`): `CORES=1` runs a job inline at the wait, `CORES=2` on a POSIX thread, `CHAOS=N` with random delays, `CPU1_TIMEOUT_AT=K` loses a job and holds the core; `tests/cpu1_test.c` in all modes and under ThreadSanitizer, from `tests/run_tests.sh` | done |
+| 3 | `fx.c`: the three parts and the drums as render units with private accumulator sets, handed to core 1 through `cpu1_run`; the sums commute, so `tests/golden.txt` must not change, with `CORES=1` and `CORES=2` | next |
 | 4 | a static split (drums + one part on core 1), the 8 ms timeout fallback, the load figures | |
 | 5 | a threaded host test of the hand-off (TSan); perf patterns; measurements on the device | |
 | 6 | the greedy per-block split by measured cost | |
 
 Later, outside the dual-core series: reverb and delay settings that change per song section (after shifl's
 song fragments), as a separate patch set.
+
+## Testing on the Mac first
+
+The render will reach core 1 only through `cpu1.h`'s three calls, and the host tests have their own
+definitions of them (`tests/cpu1_host.c`), so the same code runs on the Mac in every way the device can
+behave: `CORES=1` (inline, the job deferred to the wait), `CORES=2` (a real thread), `CORES=2 CHAOS=7` (a
+slow, erratic thread), `CPU1_TIMEOUT_AT=K` (a lost job: the fallback and the hold), and `CORES=2` under
+ThreadSanitizer. A render that gives the same `golden.txt` hashes in all of them is bit-exact and race-free
+as far as the host can tell; the device then answers only timing.
 
 ## What the device will tell
 

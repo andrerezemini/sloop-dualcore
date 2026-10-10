@@ -178,6 +178,7 @@ static void con_status(void)
 #if FELUCCA_CPU1
     con_kv("cpu1", (int32_t)cpu1_state);                 /* 1 did not start, 2 self-test failed, 3 running (cpu1.c) */
     con_kx("cpu1_trace", fm1_c1_trace);
+    con_kv("cpu1_timeouts", (int32_t)cpu1_timeouts);
 #endif
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("voices_shed", (int32_t)shed_count);

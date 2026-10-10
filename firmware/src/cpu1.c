@@ -8,9 +8,22 @@
  * FELUCCA_CPU1=0 builds without any of it. */
 enum { CPU1_OFF, CPU1_NOSTART, CPU1_FAILED, CPU1_OK };   /* not built / did not report in / self-test wrong / running */
 static uint8_t cpu1_state = CPU1_OFF;
+static uint32_t cpu1_timeouts;                           /* jobs core 1 did not finish in time (console) */
 
 #if FELUCCA_CPU1
 static volatile uint32_t cpu1_test_out;
+
+/* cpu1.h's API over the HAL: the render hands its jobs through these */
+static int cpu1_on(void) { return cpu1_state == CPU1_OK && fm1_c1_on; }
+static int cpu1_run(cpu1_job_t fn, uint32_t arg) { return cpu1_state == CPU1_OK ? fm1_cpu1_run(fn, arg) : 0; }
+static int cpu1_wait(void)
+{
+    if (fm1_cpu1_wait() == 0)
+        return 0;
+    cpu1_timeouts++;                                     /* fm1_cpu1_wait held the core: one core from here on */
+    cpu1_state = CPU1_FAILED;
+    return -1;
+}
 
 static uint32_t cpu1_lcg(uint32_t x)                     /* 64 steps of an LCG: the self-test's work */
 {
@@ -50,4 +63,7 @@ static const char *cpu1_label(void) { return cpu1_state == CPU1_OK ? "2 CORES" :
 #else
 static void cpu1_boot(void) {}
 static const char *cpu1_label(void) { return "1 CORE"; }
+static int cpu1_on(void) { return 0; }
+static int cpu1_run(cpu1_job_t fn, uint32_t arg) { (void)fn; (void)arg; return 0; }
+static int cpu1_wait(void) { return 0; }
 #endif
