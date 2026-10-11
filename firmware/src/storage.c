@@ -62,7 +62,9 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
 }
 
-static uint8_t st_buf[ST_PAYLOAD_MAX] __attribute__((aligned(4)));
+#include "scratch.h"                          /* sloop-lab: the payload buffer is the main loop's shared scratch */
+#define st_buf (main_scratch.st)
+_Static_assert(sizeof main_scratch.st == ST_PAYLOAD_MAX, "the scratch holds a payload");
 
 static int st_head(uint32_t obj, uint32_t copy, st_hdr_t *h)   /* commit record valid: 0 */
 {
