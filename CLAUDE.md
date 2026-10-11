@@ -34,7 +34,7 @@ repository, not here. Status and the patch table: [DUALCORE.md](DUALCORE.md).
 
 Memory of the current build against 2.5: RAM `.data+.bss` 88,472 B of 98,304 (+3,652: core 1's stacks, the
 second accumulator set, the second part buffer, the load counters), pool 333,948 of 344,064 (unchanged: the FM6
-buses fit in the arena), image 567,296 B, `.c1_text` 60 B. First run on an FM-1 on 10/10/2026: core 1 starts, passes its self-test, the split render plays; measurements still to come.
+buses fit in the arena), image 567,296 B, `.c1_text` 60 B. First run on an FM-1 on 10/10/2026: core 1 starts, passes its self-test, the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. The console figures and a worst-case pattern are still to come.
 
 ## The render split: what may and may not be shared
 

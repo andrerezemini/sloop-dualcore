@@ -13,8 +13,14 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 
 **10/10/2026, evening: it runs on an FM-1.** The first device with this build (patches 1 to 4, commit `1d31ce3`)
 came up with **2 CORES** on ABOUT: core 1 started at power-on, passed its self-test, and the render has been
-split (the last synth part and the drums on core 1) from the first block. Load figures and the comparison with
-2ND CORE OFF are the next thing to collect (below, "What the device will tell").
+split (the last synth part and the drums on core 1) from the first block. First measurement, the same evening,
+on a pattern of the owner's (engines not noted): **CPU 31 % with 2ND CORE OFF, 23 % ON** (the INFO column of
+GLO > SYSTEM: core 0's share of a half), the sound unchanged. The console figures (core 1's load, core 0's wait,
+timeouts, core 1's stack) and a worst-case pattern are the next thing to collect (below, "What the device will tell").
+
+| Pattern | 2ND CORE OFF | ON | core 0 freed |
+|---|---|---|---|
+| the owner's first pattern, 10/10/2026 (engines not noted) | 31 % | 23 % | 26 % of its load |
 
 | Patch | What | State |
 |---|---|---|
