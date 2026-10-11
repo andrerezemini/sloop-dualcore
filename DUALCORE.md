@@ -11,6 +11,17 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 
 ## Status
 
+**11/10/2026, 13:30: the 2.6-based build runs on an FM-1, and the SRAM below the RAM region is real.** First boot
+of the `ram` branch's build (patches 1-5b of this branch plus the four reductions), straight over the official 2.6
+from the local installer: ABOUT says 2 CORES; the console, 87 s after boot, idle, says `lowram 1` (every word of
+the 29 KB below the RAM region took and gave back its pattern, and core 1 ran its self-test and its jobs with its
+stacks in there), `cpu1 3`, `cpu1_trace 0xC1000002`, `cpu1_timeouts 0`, `cpu1_stack_free 2404` (of 2,816),
+`stack_free 22956` (of 24,320), `sstack_free 7080` (of 7,936), `sp 0x01C79E38`, `audio_max_us 1273`, `cpu_pct 9`,
+`flash 1`. So the main loop runs on the 24 KB main stack (456 B deep at the prompt, 1,364 B at most so far) and
+the interrupts on the 8 KB supervisor stack (856 B at most so far): Felucca's guard comment can be settled. The
+figures after heavy use (the editor, SPECTROGRAM, a project load, three PHYS SYMP parts) are still to come; they
+decide the stacks' size.
+
 **11/10/2026, afternoon: the split costs the RAM region nothing (patch 5).** The 2.6 merge had left 1,780 B of the
 96 KiB RAM region (`.data` + `.bss`) free: SLOOP had already spilled its reverb lines (17.4 KB) and the 2.6 INSERT
 state into it because the pool is full, and the series added 3.8 KB. An analysis of the ELF found 29.5 KB of SRAM below

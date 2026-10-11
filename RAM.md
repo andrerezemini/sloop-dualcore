@@ -17,6 +17,13 @@ none). Nothing here changes a sound; two things change what a corner case does (
 From 96,524 B (2.6 + the split) to 58,220 B of 98,304: 40.1 KB spare. The pool (333,900 of 344,064 B) and the
 `.lowram` region (22,772 of 29,488 B) do not move. `FELUCCA_CPU1=0` builds too (58,156 B).
 
+## On the device
+
+First boot 11/10/2026 (13:30), over the official 2.6: ABOUT 2 CORES; the console at idle: `lowram 1`,
+`cpu1_timeouts 0`, `stack_free 22956`, `sstack_free 7080`, `sp 0x01C79E38` (the main loop on the main stack, the
+interrupts on the supervisor stack), `flash 1`. The user preset, backup, DRAWBAR and update paths are still to be
+exercised on it.
+
 ## What a user may notice
 
 - **Without a working flash** (the JEDEC id did not match at boot, which no healthy FM-1 shows), a user preset can

@@ -46,8 +46,11 @@ RAM 88,472 B, image 567,296 B.) The rule from patch 5 on: **anything big this br
 may be moved there too when a merge overflows the region (the reverb lines were the first). The region ends at
 0x01C07F00: `crt0.S` writes the SPL's registers at 0x01C07F20. The host tests see no attribute (`hostsim.c` defines
 `__attribute__(x)` away). First run on an FM-1 on 10/10/2026 (patches 1-4 on 2.5): core 1 starts, passes its self-test,
-the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. The 2.6 build, the
-`.lowram` proof, the stack figures, the console figures and a worst-case pattern are still to come from the device.
+the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. **The 2.6-based
+build ran on the FM-1 on 11/10/2026 (13:30, the `ram` branch's build): `lowram 1`, 2 CORES, `cpu1_timeouts 0`, at
+idle `stack_free 22956`, `sstack_free 7080`, `sp 0x01C79E38` (the main loop on the main stack, the interrupts on
+the supervisor stack).** The stack figures after heavy use, the console load figures and a worst-case pattern are
+still to come from the device.
 
 ## Branch `ram` (11/10/2026, on top of `dualcore`)
 
