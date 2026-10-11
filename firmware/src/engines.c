@@ -61,9 +61,9 @@ static void *eng_arena_of(const track_t *t, uint32_t eng)
 /* fx.c units_split: rendering t this block would draw rng() (libc.c), so t stays on core 0, where the draws
  * keep their order: a sounding voice's slot is not on the part's MODEL (phys_render resets it with a draw).
  * When the arena or the layout is not PHYS's yet, every slot starts over (phys_slot_of): taken as a draw */
-static int phys_render_draws(const track_t *t)
+static int phys_render_draws(const track_t *t, int32_t model)   /* model: the MODEL this block renders with (fx.c) */
 {
-    uint32_t p = (uint32_t)(t - trk), md = (uint32_t)t->p[P_E0] % PM_COUNT, big = md == PM_SYMP, i;
+    uint32_t p = (uint32_t)(t - trk), md = (uint32_t)model % PM_COUNT, big = md == PM_SYMP, i;
     uint32_t sz = big ? PHYS_SLOT_BIG : PHYS_SLOT_SMALL;
     const uint8_t *a = (const uint8_t *)&eng_arena[p % NPART];
     if (p >= NPART)

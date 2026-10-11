@@ -13,6 +13,12 @@
  *   mix        ANALOG, GRAIN, DRAWBAR with DIST and the sends; mutes and a solo coming and going; the drums
  *              through the SLICER (GATE, then STUT) and the drum track's FILTER (low-pass, then high-pass);
  *              the metronome
+ *   fx26       SLOOP 2.6: an INSERT on every part (SOFT, CRUSH, FLANG) and on the drum track (FUZZ: first with its
+ *              FILTER, then without), LFO 2 in SYNC with S&H waves (rng() draws at the wraps, timed by the tempo),
+ *              UNI and FREE, ENV SYNC on every part (the envelope steps are per part), ANALOG's filter as BP then
+ *              HP, a preset loaded under the sounding notes of two parts in one block (both fade with their old
+ *              sound at once, one on each core), TEXTURE (VINYL, ducked), REV THROW then ECHO THROW, the punch-in
+ *              FREEZE, a pitch bend, live drum mutes, the metronome
  * Runs under every mode of the host double of core 1 (tests/cpu1_host.c: CORES, CHAOS, CPU1_TIMEOUT_AT) and
  * under ThreadSanitizer (tests/cpu1_modes.sh). Prints the jobs handed to core 1, to show the split happened.
  *   build/host/mix_split_test [QUICK]       QUICK: the splits 0, 15 and -1 only (the TSan run) */
@@ -23,8 +29,8 @@
 #define BLOCKS 1500u                                     /* ~2.2 s at 44.1 kHz */
 static const int32_t MASKS[] = {0, -1, 1, 2, 4, 8, 3, 5, 12, 7, 15};
 static const int32_t MASKS_QUICK[] = {0, 15, -1};
-static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix"};
-#define NSCENE 4u
+static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix", "fx26"};
+#define NSCENE 5u
 
 static void drums_pattern(void)                          /* kick 4 on the floor, snare 4 / 12, hats, a clap */
 {
@@ -88,6 +94,47 @@ static void scene_setup(uint32_t s)
             chords(&trk[k], k, 4, 50 + 4 * k);
         }
         break;
+    case 4:
+        host_preset(&trk[0], 0, 4);                      /* ANALOG */
+        host_preset(&trk[1], ENGI_FM6, 1);
+        host_preset(&trk[2], 7, 2);                      /* DRAWBAR */
+        for (k = 0; k < NPART; k++) {
+            trk[k].p[P_ITYPE] = (int16_t)(k == 0u ? 1 : k == 1u ? 5 : 7);   /* SOFT, CRUSH, FLANG */
+            trk[k].p[P_IA] = (int16_t)(60 + 20 * k);
+            trk[k].p[P_IB] = 70;
+            trk[k].p[P_IC] = (int16_t)(k == 1u ? 90 : 112);
+            trk[k].p[P_IMIX] = (int16_t)(80 + 15 * k);
+            trk[k].p[P_LWAVE] = 4;                       /* S&H: a draw at every wrap */
+            trk[k].p[P_LSYNC] = (int16_t)(6 + k);        /* 1/8, 8T, 1/16 of the tempo */
+            trk[k].p[P_LTRIG] = (int16_t)(k & 1u);       /* NOTE / FREE */
+            trk[k].p[P_LPOL] = (int16_t)(k == 2u);       /* BI / UNI */
+            trk[k].p[P_LD_PIT] = 30;
+            trk[k].p[P_LD_AMP] = 40;
+            trk[k].p[P_ESYNC] = 1;
+            trk[k].p[P_ATK] = (int16_t)(10 + 30 * k);
+            trk[k].p[P_DEC] = (int16_t)(50 + 20 * k);
+            trk[k].p[P_REL] = (int16_t)(40 + 10 * k);
+            trk[k].p[P_REV] = 60;
+            trk[k].p[P_DLY] = 50;
+            chords(&trk[k], k, 4, 48 + 6 * k);
+        }
+        trk[0].p[P_FTYPE] = 1;                           /* BP */
+        TDRUM->p[P_ITYPE] = 4;                           /* FUZZ on the drums */
+        TDRUM->p[P_IA] = 50;
+        TDRUM->p[P_IB] = 100;
+        TDRUM->p[P_IC] = 112;
+        TDRUM->p[P_IMIX] = 100;
+        TDRUM->p[P_TFLT] = -45;
+        song.g[G_CLOCK] = CLICK_ON;
+        song.g[G_DUCK] = 60;
+        song.g[G_TXSRC] = 1;                             /* VINYL */
+        song.g[G_TXLVL] = 90;
+        song.g[G_TXTONE] = -20;
+        song.g[G_TXMOVE] = 80;
+        song.g[G_TXRATE] = 0;
+        song.g[G_TXWHEN] = 1;                            /* ALWAYS */
+        song.g[G_TXDUCK] = 1;
+        break;
     default:
         host_preset(&trk[0], 0, 4);                      /* ANALOG */
         host_preset(&trk[1], ENGI_GRAIN, 0);
@@ -125,6 +172,37 @@ static void scene_block(uint32_t s, uint32_t b)          /* what the UI would do
             TDRUM->p[P_SLCR] = SL_STUT;
         if (b == 1000u)
             TDRUM->p[P_TFLT] = 40;
+    }
+    if (s == 4u) {
+        if (b == 300u)
+            thr_req = 1;                                 /* REV THROW held .. */
+        if (b == 420u)
+            thr_req = 2;                                 /* .. then ECHO THROW */
+        if (b == 560u)
+            thr_req = 0;
+        if (b == 500u) {                                 /* a preset on two parts under their notes (ui.c apply_preset_to):
+                                                          * both fade out with their old sound in the same blocks */
+            uint32_t k;
+            for (k = 1; k < NPART; k++) {
+                sound_change(&trk[k]);
+                panic_req |= (uint8_t)(1u << k);
+                host_preset_req(&trk[k], k == 1u ? ENGI_FM6 : 7, 4 + k);
+            }
+        }
+        if (b == 650u)
+            trk[0].p[P_FTYPE] = 2;                       /* HP */
+        if (b == 700u)
+            punch.req = PX_FREEZE;                       /* the reverb held, the dry mix fed into it */
+        if (b == 900u)
+            punch.req = -1;
+        if (b == 800u)
+            TDRUM->p[P_TFLT] = 0;                        /* the drums' INSERT without the FILTER */
+        if (b == 1000u)
+            drum_mute = 0x5;                             /* lanes 0 and 2 muted live (EDIT + a black key) */
+        if (b == 1100u)
+            trk[0].bend = 5000;
+        if (b == 1200u)
+            drum_mute = 0;
     }
 }
 

@@ -11,6 +11,17 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 
 ## Status
 
+**11/10/2026: the series is on SLOOP 2.6.** Upstream's 2.6 (27 punch-in effects, INSERT on every track, LFO 2, ENV
+SYNC, TEXTURE, MIDI channels per track, MIDI LEARN, the look-ahead limiter, Terminus Bold) was merged into `dualcore`
+the day after it came out: four files in conflict (`fx.c`, `panel.c`, `ui_menu.c`, the UI test), and a new audit of
+the render for state shared across parts, which found two things 2.6 added (the ENV SYNC steps, kept once for "the
+part rendering now", and the preset-fade scratch in `mix_part`) and made them per track / per core. The settings
+bit of 2ND CORE moved from 21 to 26 (2.6 took 21..25 for MIDI IN = CH n), and SYSTEM in the menu has four rows now
+(2ND CORE, HARDWARE CALIBRATION, MIDI LEARN CLEAR, ABOUT). The 184 golden renders of 2.6 and the split test, with a
+new scene for 2.6's features, give the same hashes under every mode of the host double, and no race under
+ThreadSanitizer. The 2.6-based build has **not yet been run on the FM-1**: the figures below are the 2.5-based
+build's.
+
 **10/10/2026, evening: it runs on an FM-1.** The first device with this build (patches 1 to 4, commit `1d31ce3`)
 came up with **2 CORES** on ABOUT: core 1 started at power-on, passed its self-test, and the render has been
 split (the last synth part and the drums on core 1) from the first block. First measurement, the same evening,
@@ -29,7 +40,8 @@ timeouts, core 1's stack) and a worst-case pattern are the next thing to collect
 | 2b | **the host double of core 1** (`firmware/src/cpu1.h` API: `cpu1_run` / `cpu1_wait` / `cpu1_on`; `tests/cpu1_host.c`): `CORES=1` runs a job inline at the wait, `CORES=2` on a POSIX thread, `CHAOS=N` with random delays, `CPU1_TIMEOUT_AT=K` loses a job and holds the core; `tests/cpu1_test.c` in all modes and under ThreadSanitizer, from `tests/run_tests.sh` | done |
 | 3 | **the render split** (`fx.c`): the three parts and the drums as render units (`mix_part`, `mix_drums`, `mix_units`), each adding into an accumulator set of its own (the dry mix and the three sends); core 1's share handed over through `cpu1_run` before this core renders its own, added after `cpu1_wait`; the 8 ms timeout fallback (core 1 held, its units rendered here once). FM6's operator buses per part (`fm6_part_t`, in the engine arena, `fm6_core.c`, `eng_fm6.c`, `engines.c`). What stays on core 0 (`units_split`): two FORMANT parts together (one breath-noise xorshift), a part whose LFO wraps this block or whose PHYS model changed under a note (`rng()`, so the draws keep their order). `cpu1_units` (`cpu1.h`) forces a split: 0 none, a mask, -1 the firmware's choice | done: the 182 golden hashes unchanged under every mode of the host double and with no split (`tests/cpu1_modes.sh`); `tests/mix_split_test.c` (three FORMANT, FM6 or PHYS parts, S&H LFOs, mutes, the drums through the SLICER and the FILTER, the metronome) gives the same output for every split of the units, and no race under ThreadSanitizer; builds; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
 | 4 | **the switch and the figures**: MENU > SYSTEM > **2ND CORE** ON / OFF (`ui_menu.c`; a bit of the settings word in `panel.c`, kept across restarts, old settings read as ON; live: the next block renders so, and the sound is the same either way); core 1's time in its job and core 0's time waiting for it, measured in `fx.c` with TIMER4 and smoothed per half as the CPU figure is (`cpu1_load_half`, called from the audio interrupt); on the console: `cpu1_busy_pct`, `cpu1_wait_pct`; ABOUT says `C1 OFF` when switched off. The INFO page keeps its one CPU column (core 0's load): it has no free column, so the figures live on the console | done, builds; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
-| 5 | the first run on the device (the checklist below), then perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb) and the measurements in this file, with 2ND CORE ON and OFF | next |
+| 2.6 | the series carried onto SLOOP 2.6 (11/10/2026: upstream's `main` merged into `dualcore`): `mix_part` wraps 2.6's preset fade with its scratch per core; the drum track's INSERT inside `mix_drums`; TEXTURE and FREEZE's feed after the two accumulator sets are added, the THROW glide before the hand-off; `units_split` follows LFO 2's tempo-synced increment and the values a fading part renders with; ENV SYNC's steps per track (`voice.c`); 2ND CORE in bit 26 of the settings; four rows in the SYSTEM menu; a 2.6 scene in `tests/mix_split_test.c` | done: builds (RAM 96,524 of 98,304 B), same hashes in every mode, no race; **not yet run on the FM-1** |
+| 5 | the 2.6 build on the device (the checklist below), then perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb) and the measurements in this file, with 2ND CORE ON and OFF | next |
 | 6 | the greedy per-block split by measured cost | |
 
 Later, outside the dual-core series: reverb and delay settings that change per song section (after shifl's
@@ -64,14 +76,16 @@ first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|au
 and `cpu1_wait_pct` (core 1's share of a half spent rendering, core 0's share spent waiting for it) and
 `cpu1_stack_free` (bytes of core 1's 2,816 B stack the render never reached: it must stay well above 0 on the
 heaviest patterns). With 2 CORES the last synth part and the drums render on core 1; the audio is bit for bit
-SLOOP 2.5's. MENU > SYSTEM > 2ND CORE switches the split off and on while playing: `cpu_pct` (the console, or
+SLOOP 2.6's. MENU > SYSTEM > 2ND CORE switches the split off and on while playing: `cpu_pct` (the console, or
 INFO on the SYSTEM page) should drop with it on, by roughly the drums' and one part's share.
 
 ## Installing a build of this branch on an FM-1
 
 The package keeps SLOOP's development identity (FM-1_900); Felucca's update path does not refuse a package
-with the same identity as the installed one, so it installs over the official 2.5 and the official 2.5
-installs back over it. Your projects, presets, samples and settings are kept. From the browser:
+with the same identity as the installed one, so it installs over the official 2.6 and the official 2.6
+installs back over it. Your projects, presets, samples and settings are kept (2.6's own note: a project saved by
+2.6 does not open in 2.5). If the device ran the 2.5-based build of this branch with 2ND CORE OFF, that bit now
+reads as GLO > MIDI 2 > IN = CH 1: set IN back to NOTES once. From the browser:
 
 ```sh
 python3 web/make_site.py build/felucca.fwsc dev ../sloop-site
@@ -84,10 +98,11 @@ hold OCT- while switching on, then install again.
 
 ## Building
 
-As SLOOP's `BUILDING.md`; on macOS run `sh build.sh` with Docker up. Memory of this build against 2.5:
-RAM `.data+.bss` 88,472 B of 98,304 (+3.6 KiB: the core's two stacks, the second accumulator set, the
-second part buffer, the load counters), pool unchanged (the FM6 buses fit in the engine arena), image 567,296 B
-(+2,096 B), `.c1_text` 60 B in RAMTEXT.
+As SLOOP's `BUILDING.md`; on macOS run `sh build.sh` with Docker up. Memory of this build against 2.6
+(upstream 2.6: RAM 92,696 B, image 573,052 B): RAM `.data+.bss` 96,524 B of 98,304 (+3.7 KiB: the core's two
+stacks, the second accumulator set, the second part buffer, the drum buffers, the preset-fade scratch, the load
+counters; 1,780 B spare), pool unchanged (the FM6 buses fit in the engine arena), image 576,212 B (+3,160 B),
+`.c1_text` 60 B in RAMTEXT. (Against 2.5 it was RAM 88,472 B, image 567,296 B.)
 
 ## Licence and credits
 
