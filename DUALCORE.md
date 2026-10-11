@@ -11,6 +11,18 @@ patches, splits SLOOP's `mix_block` into units that render on both cores with a 
 
 ## Status
 
+**11/10/2026, afternoon: the split costs the RAM region nothing (patch 5).** The 2.6 merge had left 1,780 B of the
+96 KiB RAM region (`.data` + `.bss`) free: SLOOP had already spilled its reverb lines (17.4 KB) and the 2.6 INSERT
+state into it because the pool is full, and the series added 3.8 KB. An analysis of the ELF found 29.5 KB of SRAM below
+the RAM region (0x01C00BD0..0x01C07F00) that Felucca's map leaves for a RAM-run debug build SLOOP does not have. Patch 5
+makes it a section, `.lowram`, proved and zeroed at boot like `.pool`, and puts there the reverb lines, core 1's two
+stacks and the render split's scratch (the second accumulator set, the drum buffers, the part buffers, the preset-fade
+scratch): the RAM region drops from 96,524 to **73,756 B** (24.5 KB spare), nothing else changes, the audio is the same
+by construction (placement only). The console says `lowram = 1` when every word of the region took and gave back a
+pattern at boot. Patch 5b paints core 0's two stacks (24 KB and 8 KB, never measured before) and reports how deep they
+go (`stack_free`, `sstack_free`): the figures from the device decide whether the pool may grow later. **Not yet run on
+the FM-1**: the first boot of this build must show `lowram = 1`, 2 CORES, the reverb audible.
+
 **11/10/2026: the series is on SLOOP 2.6.** Upstream's 2.6 (27 punch-in effects, INSERT on every track, LFO 2, ENV
 SYNC, TEXTURE, MIDI channels per track, MIDI LEARN, the look-ahead limiter, Terminus Bold) was merged into `dualcore`
 the day after it came out: four files in conflict (`fx.c`, `panel.c`, `ui_menu.c`, the UI test), and a new audit of
@@ -41,8 +53,10 @@ timeouts, core 1's stack) and a worst-case pattern are the next thing to collect
 | 3 | **the render split** (`fx.c`): the three parts and the drums as render units (`mix_part`, `mix_drums`, `mix_units`), each adding into an accumulator set of its own (the dry mix and the three sends); core 1's share handed over through `cpu1_run` before this core renders its own, added after `cpu1_wait`; the 8 ms timeout fallback (core 1 held, its units rendered here once). FM6's operator buses per part (`fm6_part_t`, in the engine arena, `fm6_core.c`, `eng_fm6.c`, `engines.c`). What stays on core 0 (`units_split`): two FORMANT parts together (one breath-noise xorshift), a part whose LFO wraps this block or whose PHYS model changed under a note (`rng()`, so the draws keep their order). `cpu1_units` (`cpu1.h`) forces a split: 0 none, a mask, -1 the firmware's choice | done: the 182 golden hashes unchanged under every mode of the host double and with no split (`tests/cpu1_modes.sh`); `tests/mix_split_test.c` (three FORMANT, FM6 or PHYS parts, S&H LFOs, mutes, the drums through the SLICER and the FILTER, the metronome) gives the same output for every split of the units, and no race under ThreadSanitizer; builds; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
 | 4 | **the switch and the figures**: MENU > SYSTEM > **2ND CORE** ON / OFF (`ui_menu.c`; a bit of the settings word in `panel.c`, kept across restarts, old settings read as ON; live: the next block renders so, and the sound is the same either way); core 1's time in its job and core 0's time waiting for it, measured in `fx.c` with TIMER4 and smoothed per half as the CPU figure is (`cpu1_load_half`, called from the audio interrupt); on the console: `cpu1_busy_pct`, `cpu1_wait_pct`; ABOUT says `C1 OFF` when switched off. The INFO page keeps its one CPU column (core 0's load): it has no free column, so the figures live on the console | done, builds; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
 | 2.6 | the series carried onto SLOOP 2.6 (11/10/2026: upstream's `main` merged into `dualcore`): `mix_part` wraps 2.6's preset fade with its scratch per core; the drum track's INSERT inside `mix_drums`; TEXTURE and FREEZE's feed after the two accumulator sets are added, the THROW glide before the hand-off; `units_split` follows LFO 2's tempo-synced increment and the values a fading part renders with; ENV SYNC's steps per track (`voice.c`); 2ND CORE in bit 26 of the settings; four rows in the SYSTEM menu; a 2.6 scene in `tests/mix_split_test.c` | done: builds (RAM 96,524 of 98,304 B), same hashes in every mode, no race; **not yet run on the FM-1** |
-| 5 | the 2.6 build on the device (the checklist below), then perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb) and the measurements in this file, with 2ND CORE ON and OFF | next |
-| 6 | the greedy per-block split by measured cost | |
+| 5 | **the SRAM below the RAM region**: `.lowram` in `app.ld` (RAMTEXT extended to 0x01C07F00, the boot status words of `crt0.S` just above it), proved and zeroed at boot (`main.c lowram_test`, console `lowram`), holding `rev_line`, `acc`, `drum_buf`, `part_buf`, `mix_part`'s `pnew` (`fx.c`, a section mark each) and core 1's stacks (`fm1_cpu1.S`'s `.bss.c1stack`, placed by name: X0X's file untouched); `tools/build.py` reports it | done: builds (RAM 73,756 of 98,304 B, `.lowram` 22,772 of 29,488 B, pool unchanged, image 576,564 B), `FELUCCA_CPU1=0` builds too; the host suite unchanged; **not yet run on the FM-1** |
+| 5b | **the stacks measured**: core 0's main and supervisor stacks painted at boot below the pointers in use (`main.c stack_paint`), `stack_free` / `sstack_free` / `sp` on the console: how deep each goes, and which of them the main loop and the interrupts run on (Felucca's guard did not know) | done: builds; the figures come from the device |
+| 6 | the 2.6 build on the device (the checklist below), then perf patterns (light, typical, worst: three PHYS SYMP / FM6 / GRAIN parts with 4-note chords, full drums, delay and reverb) and the measurements in this file, with 2ND CORE ON and OFF | next |
+| 7 | the greedy per-block split by measured cost | |
 
 Later, outside the dual-core series: reverb and delay settings that change per song section (after shifl's
 song fragments), as a separate patch set.
@@ -69,7 +83,10 @@ USB audio.
 
 On a first boot of this build: ABOUT (hold HOME, SYSTEM, ABOUT) shows **2 CORES** when core 1 started and
 passed its self-test, **1 CORE** otherwise; the serial console (MENU > AUDIO > USB SERIAL ON, restart, then any
-serial terminal on the USB port, e.g. `screen /dev/tty.usbmodem* 115200`, and `status`) prints `cpu1` (0 not built,
+serial terminal on the USB port, e.g. `screen /dev/tty.usbmodem* 115200`, and `status`) prints `lowram` (1: the SRAM
+below the RAM region took and gave back a pattern at boot, word by word; 2: it did not, and this build must not be
+used), `stack_free` and `sstack_free` (bytes of core 0's main and supervisor stacks never reached since boot: the
+24 KB and 8 KB of `app.ld` were never measured; `sp` says which one the main loop runs on), `cpu1` (0 not built,
 1 did not report in within 20 ms, 2 answered wrong or late, 3 running), `cpu1_trace` (0xC1000001: reached
 its entry; 0xC1000002: reached its loop), `cpu1_timeouts` (blocks core 1 did not finish in 8 ms: after the
 first, it is held and SLOOP runs on one core), `cpu1_units` (`cpu1 units MASK|auto` sets it live), `cpu1_busy_pct`
@@ -99,10 +116,12 @@ hold OCT- while switching on, then install again.
 ## Building
 
 As SLOOP's `BUILDING.md`; on macOS run `sh build.sh` with Docker up. Memory of this build against 2.6
-(upstream 2.6: RAM 92,696 B, image 573,052 B): RAM `.data+.bss` 96,524 B of 98,304 (+3.7 KiB: the core's two
-stacks, the second accumulator set, the second part buffer, the drum buffers, the preset-fade scratch, the load
-counters; 1,780 B spare), pool unchanged (the FM6 buses fit in the engine arena), image 576,212 B (+3,160 B),
-`.c1_text` 60 B in RAMTEXT. (Against 2.5 it was RAM 88,472 B, image 567,296 B.)
+(upstream 2.6: RAM 92,696 B, image 573,052 B): RAM `.data+.bss` **73,756 B** of 98,304 (24,548 B spare: the reverb
+lines, core 1's two stacks and the split's scratch moved to `.lowram`, 22,772 B of the 29,488 B below the RAM region,
+`tools/build.py` prints both), pool unchanged (the FM6 buses fit in the engine arena), image 576,564 B (+3,512 B:
+the split, the boot self-test and the stack figures), `.c1_text` 60 B. (Before patch 5 the RAM region was 96,524 B;
+on 2.5, 88,472 B, image 567,296 B.) The analysis behind patch 5 and the next RAM options (a scratch union, the storage
+buffer, the user banks read in place) is the owner's; its figures are in the commit messages.
 
 ## Licence and credits
 

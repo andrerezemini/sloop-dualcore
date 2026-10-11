@@ -4,7 +4,10 @@
 > groovebox firmware for the M-VAVE FM-1, where additions are tried as short series of patches that can be
 > re-applied on each SLOOP release and offered upstream. The first, on branch `dualcore`: SLOOP 2.6 (since
 > 11/10/2026; 2.5 before) with the FM-1's second processor core brought up at boot and the audio render split
-> across both cores, with a bit-identical result. What it adds, its status, how to build and install it: [DUALCORE.md](DUALCORE.md).
+> across both cores, with a bit-identical result; since patch 5 (11/10/2026) the split costs SLOOP's RAM budget
+> nothing: the branch's buffers, core 1's stacks and SLOOP's own reverb lines live in 29 KB of SRAM below the RAM
+> region that no FM-1 firmware had used (the RAM region goes from 96.5 to 73.8 KB of its 96 KiB). What it adds, its
+> status, how to build and install it: [DUALCORE.md](DUALCORE.md).
 > Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
 > [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
 > Claude (the commits say so). GPL-3.0-only, as all of them.

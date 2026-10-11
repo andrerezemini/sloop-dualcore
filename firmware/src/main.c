@@ -26,6 +26,35 @@ static uint8_t lowram_test(void)
 }
 static uint32_t lowram_state(void) { return lowram_ok; }   /* console.c */
 
+/* core 0's two stacks (app.ld: 24 KB from _ustack_lo, 8 KB from _sstack_lo), never measured before: painted at boot
+ * with a mark up to 512 B below whichever of sp / ssp / usp sits in each region (the live frames), so the console
+ * can say how deep each has gone since (stack_free, sstack_free: bytes above the guard band never reached) and which
+ * region the main loop runs on (sp). What they say decides whether _guard0 may move up and the pool grow. */
+extern char _ustack_top[];
+#define STACK_MARK 0x4B4D5453u                  /* "STMK" */
+static void stack_paint(char *lo, char *top)
+{
+    uint32_t a = (uint32_t)(uintptr_t)lo, lim = (uint32_t)(uintptr_t)top, p[3], i, *d;
+    p[0] = fm1_sp();                            /* (fm1_guard.h) */
+    p[1] = fm1_ssp();
+    p[2] = fm1_usp();
+    for (i = 0; i < 3u; i++)
+        if (p[i] >= a + 512u && p[i] < lim + 512u && p[i] - 512u < lim)
+            lim = p[i] - 512u;
+    for (d = (uint32_t *)lo; (uint32_t)(uintptr_t)d < lim; d++)
+        *d = STACK_MARK;
+}
+static uint32_t stack_free(const char *lo, const char *top)   /* bytes of marks still in place, from the guard band up */
+{
+    const uint32_t *d = (const uint32_t *)lo;
+    while ((const char *)d < top && *d == STACK_MARK)
+        d++;
+    return (uint32_t)((const char *)d - lo);
+}
+static uint32_t stack_free_main(void) { return stack_free(_ustack_lo, _ustack_top); }   /* console.c */
+static uint32_t stack_free_sup(void) { return stack_free(_sstack_lo, _sstack_top); }
+static uint32_t stack_sp(void) { return fm1_sp(); }
+
 
 /* TIMER5 outranks ALNK0 (timer5_start): the scan keeps its pace while a half buffer renders. Nested in
  * the render it only scans and counts ms; the USB and UART polls wait for the first tick after the
@@ -326,6 +355,8 @@ void fm1_cstart(void)
     for (d = _pool_start; d < _pool_end; d++)
         *d = 0;
     lowram_ok = lowram_test();                  /* .lowram proved and zeroed (app.ld) */
+    stack_paint(_ustack_lo, _ustack_top);       /* the stacks painted below their live frames (console: stack_free) */
+    stack_paint(_sstack_lo, _sstack_top);
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)

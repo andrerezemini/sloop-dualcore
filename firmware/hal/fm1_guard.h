@@ -110,6 +110,12 @@ static void fm1_guard_lock_top(void)
     fm1__dbg_lock();
 }
 
+/* the three stack pointers as they are now (sloop-lab: main.c paints the stacks below them at boot, so the
+ * console can say how deep each has gone and which one the main loop runs on) */
+static inline uint32_t fm1_sp(void) { uint32_t v; __asm__ volatile("%0 = sp" : "=r"(v)); return v; }
+static inline uint32_t fm1_ssp(void) { uint32_t v; __asm__ volatile("%0 = ssp" : "=r"(v)); return v; }
+static inline uint32_t fm1_usp(void) { uint32_t v; __asm__ volatile("%0 = usp" : "=r"(v)); return v; }
+
 /* the reserved top of RAM is write-protected now (fm1_guard_lock_top) */
 static int fm1_guard_top_locked(void) { return (FM1_C0_WR_LIMIT_EN & 4u) != 0; }
 

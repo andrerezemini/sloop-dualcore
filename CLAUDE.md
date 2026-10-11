@@ -33,13 +33,21 @@ repository, not here. Status and the patch table: [DUALCORE.md](DUALCORE.md).
 | 3 render split | `firmware/src/fx.c` (`mixacc_t acc[2]`, `part_buf[2]`, `drum_buf`, `mix_part(t, n, mx, b)`, `mix_drums`, `mix_units`, `cpu1_units_job`, `units_split`, `mix_block`), `fm6_core.c` + `eng_fm6.c` + `engines.c` (FM6's operator buses per part: `fm6_part_t` in the engine arena; `phys_render_draws` in `engines.c`), `cpu1.h` (`cpu1_units`), `cpu1.c` + `console.c` (`cpu1_units`, `cpu1_stack_free`); tests: `cpu1_host.c` (`CPU1_UNITS`), `mix_split_test.c` (new), `cpu1_modes.sh` (new), `run_tests.sh` | the parts and the drums as units with private accumulator sets; core 1 renders the last part and the drums, with the timeout fallback; bit-exact in every host mode; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
 | 4 switch and figures | `ui_menu.c` (`MI_CPU1` "2ND CORE" in SYSTEM, `mi_cpu1_have`), `panel.c` (`cpu1_off`, bit 26 of the settings word (bit 21 until the 2.6 merge: 2.6 took 21..25 for MIDI IN = CH n), applied to `cpu1_units` in `lights_from_word`), `fx.c` (`cpu1_job_ticks`, `cpu1_wait_ticks`, `cpu1_busy_q8`, `cpu1_wait_q8`, `cpu1_load_half`), `audio.c` (calls `cpu1_load_half` after each half), `cpu1.h` + `cpu1.c` + `cpu1_host.c` (`cpu1_ticks`: TIMER4 on the device, 0 on the host), `console.c` (`cpu1_busy_pct`, `cpu1_wait_pct`), `cpu1.c` (`cpu1_label`: "C1 OFF"); tests: `ui_pages_test.c` (the SYSTEM section has four rows since 2.6: 2ND CORE, HARDWARE CALIBRATION, MIDI LEARN CLEAR, ABOUT, KNOB 1..4; the switch and its settings bit checked) | the menu switch, kept in the settings; the load figures on the console; **runs on the FM-1** (first boot 10/10/2026: ABOUT says 2 CORES; the measurements are still to come) |
 | 2.6 merge (11/10/2026) | `fx.c` (`mix_part` is 2.6's preset-fade wrapper over `mix_part_run(t, n, mx, b)`, its sound set aside per core, `pnew[2]`; `drum_insert` inside `mix_drums`, with or without the FILTER; the THROW glide before the hand-off; `texture_mix` and `punch_freeze_feed` after `acc[0] += acc[1]`; `units_split` predicts the LFO wrap with 2.6's increment (`lfo_sync_inc`) and reads the values the block renders with, `p_old` / `pe_old`, and skips parts not in the mask), `voice.c` (`esync_k[NTRK][3]`: ENV SYNC's steps per track; `lfo_sync_inc(const int16_t *p)`), `engines.c` (`phys_render_draws(t, model)`), `panel.c` (bit 26), `ui_menu.c` (four rows in SYSTEM; the help text only on a section of three), `tests/mix_split_test.c` (scene `fx26`: INSERT on every unit, LFO 2 SYNC S&H, ENV SYNC, two parts' presets fading at once, TEXTURE, THROWs, FREEZE, drum mutes, a bend), `tests/ui_pages_test.c`, `tests/font_test.c` (2.6's new test includes `gfx.c` without hostsim's `#define __attribute__(x)`: clang on macOS refuses the `.pool` section; one line added, worth an upstream issue) | the series on SLOOP 2.6: builds; the 184 golden renders and `mix_split_test` give the same hashes in every mode, no race under TSan; **not yet run on the FM-1 as a 2.6 build** |
-| 5 (next) | this file, `DUALCORE.md` | the 2.6 build on the device (ABOUT: 2 CORES) and its measurements; then perf patterns |
+| 5 ram (11/10/2026) | `firmware/app.ld` (RAMTEXT to 0x01C07F00, `.lowram` output section taking `*(.bss.c1stack)` and `*(.lowram*)`, `_lr_start` / `_lr_end`), `main.c` (`lowram_test`: every word written and read back, then zeroed, before `.data` is copied; `lowram_state` for the console), `fx.c` (`section(".lowram")` on `rev_line`, `acc`, `part_buf`, `drum_buf`, `mix_part`'s `pnew`), `console.c` (`lowram`), `tools/build.py` (the `lowram` figure) | the SRAM below the RAM region (29,488 B that Felucca's map left for RAM-run debug) holds the reverb lines, core 1's stacks and the split's scratch: RAM region 96,524 -> **73,756 B**; builds with and without `FELUCCA_CPU1`; placement only, so the goldens cannot change; **not yet run on the FM-1** (the console's `lowram = 1` is the proof that this SRAM behaves) |
+| 5b stacks (11/10/2026) | `main.c` (`stack_paint` below whichever of `sp` / `ssp` / `usp` sits in each region, `stack_free`), `console.c` (`stack_free`, `sstack_free`, `sp`) | core 0's main (24 KB) and supervisor (8 KB) stacks measured for the first time; the device's figures decide whether `_guard0` can move up and the pool grow |
+| 6 (next) | this file, `DUALCORE.md` | the 2.6 build on the device (ABOUT: 2 CORES, `lowram = 1`) and its measurements; then perf patterns |
 
 Memory of the current build against 2.6 (upstream 2.6 built here: RAM 92,696 B, image 573,052 B): RAM
-`.data+.bss` 96,524 B of 98,304 (+3,828: core 1's stacks, the second accumulator set, the second part buffer, the
-drum buffers, the preset-fade scratch, the load counters; **1,780 B spare**: the next thing SLOOP adds to RAM may
-not fit with the split, and the budget check in `tools/build.py` will say so), pool 333,900 of 344,064 (unchanged:
-the FM6 buses fit in the arena), image 576,212 B (+3,160), `.c1_text` 60 B. (On 2.5: RAM 88,472 B, image 567,296 B.) First run on an FM-1 on 10/10/2026: core 1 starts, passes its self-test, the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. The console figures and a worst-case pattern are still to come.
+`.data+.bss` **73,756 B** of 98,304 (24,548 B spare since patch 5; before it 96,524 B, 1,780 spare), `.lowram`
+22,772 B of 29,488 (`rev_line` 17,368, core 1's stacks 3,072, `acc` 1,280, `drum_buf` 512, `pnew` 284, `part_buf`
+256), pool 333,900 of 344,064 (unchanged: the FM6 buses fit in the arena), image 576,564 B, `.c1_text` 60 B. (On 2.5:
+RAM 88,472 B, image 567,296 B.) The rule from patch 5 on: **anything big this branch adds to RAM goes to `.lowram`**
+(a section mark, as `.pool`), so a SLOOP release never competes with the split for the RAM region; an upstream object
+may be moved there too when a merge overflows the region (the reverb lines were the first). The region ends at
+0x01C07F00: `crt0.S` writes the SPL's registers at 0x01C07F20. The host tests see no attribute (`hostsim.c` defines
+`__attribute__(x)` away). First run on an FM-1 on 10/10/2026 (patches 1-4 on 2.5): core 1 starts, passes its self-test,
+the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. The 2.6 build, the
+`.lowram` proof, the stack figures, the console figures and a worst-case pattern are still to come from the device.
 
 ## The render split: what may and may not be shared
 
@@ -128,7 +136,10 @@ python3 web/make_site.py build/felucca.fwsc dev ../sloop-site && cd ../sloop-sit
 
 First boot checklist: ABOUT (hold HOME, SYSTEM, ABOUT) says **2 CORES**; the serial console (MENU > AUDIO >
 USB SERIAL ON, restart; then `screen /dev/tty.usbmodem* 115200` on the Mac, type `status`; there is no `fm1t`
-tool in SLOOP's tree, the console is a plain USB CDC port) prints `cpu1 = 3` and `cpu1_trace = 0xC1000002`. "1 CORE" with `cpu1_trace 0` means core 1 never reached
+tool in SLOOP's tree, the console is a plain USB CDC port) prints `lowram = 1` (2 = a word of the SRAM below the RAM
+region failed the boot test: do not use the build), `stack_free` / `sstack_free` (bytes of core 0's two stacks never
+reached; `sp` tells which region the main loop runs on: note them, they decide the pool's growth), `cpu1 = 3` and
+`cpu1_trace = 0xC1000002`. "1 CORE" with `cpu1_trace 0` means core 1 never reached
 its entry; `0xC1000001` means it reached the entry but not its loop. Then play: `cpu1_timeouts` must stay 0
 (one means core 1 was held and SLOOP fell back to one core), `cpu1_stack_free` well above 0 on the heaviest
 patterns (core 1's stack is 2,816 B), `cpu1_busy_pct` and `cpu1_wait_pct` plausible (busy well under 100, wait
