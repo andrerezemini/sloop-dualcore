@@ -5,6 +5,26 @@
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 extern uint32_t _c1_start[], _c1_end[], _c1_load[];
+extern uint32_t _lr_start[], _lr_end[];
+
+/* .lowram (app.ld): the SRAM between the second core's loop and the boot status words at 0x01C07F00, which no
+ * FM-1 firmware had used before (Felucca's map keeps it for RAM-run debug, which SLOOP has no build for). It holds
+ * the reverb lines, the second core's stacks and the render split's scratch (fx.c), so the split costs the RAM
+ * region nothing. Proved once at boot: every word takes and gives back a pattern, then the region is zeroed as
+ * .pool is. Console: lowram (1 proved, 2 a word failed: the build must not rely on this SRAM). */
+static uint8_t lowram_ok;
+static uint8_t lowram_test(void)
+{
+    uint32_t *d, bad = 0;
+    for (d = _lr_start; d < _lr_end; d++)
+        *d = ~(uint32_t)(uintptr_t)d;
+    for (d = _lr_start; d < _lr_end; d++)
+        bad |= *d != ~(uint32_t)(uintptr_t)d;
+    for (d = _lr_start; d < _lr_end; d++)
+        *d = 0;
+    return bad ? 2u : 1u;
+}
+static uint32_t lowram_state(void) { return lowram_ok; }   /* console.c */
 
 
 /* TIMER5 outranks ALNK0 (timer5_start): the scan keeps its pace while a half buffer renders. Nested in
@@ -305,6 +325,7 @@ void fm1_cstart(void)
         *d = 0;
     for (d = _pool_start; d < _pool_end; d++)
         *d = 0;
+    lowram_ok = lowram_test();                  /* .lowram proved and zeroed (app.ld) */
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)

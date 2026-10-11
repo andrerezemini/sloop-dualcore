@@ -11,6 +11,7 @@ static struct {
     uint32_t len;
     uint8_t dtr_seen, stalled;   /* stalled: the host stopped reading, drop the rest of this reply */
 } con;
+static uint32_t lowram_state(void);                  /* main.c: the SRAM below the RAM region, proved at boot */
 
 static void con_putc(char c)
 {
@@ -184,6 +185,7 @@ static void con_status(void)
     con_kv("cpu1_wait_pct", (int32_t)(cpu1_wait_q8 * 100u / 256u));   /* core 0's time waiting for it */
     con_kv("cpu1_stack_free", (int32_t)cpu1_stack_free());   /* bytes of its stack the render never reached */
 #endif
+    con_kv("lowram", (int32_t)lowram_state());           /* the SRAM below the RAM region: 1 proved at boot, 2 not (main.c) */
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("voices_shed", (int32_t)shed_count);
     con_kv("voices_given_up", (int32_t)voice_kills);

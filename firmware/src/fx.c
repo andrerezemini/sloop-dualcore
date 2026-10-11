@@ -12,7 +12,8 @@ static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 #define REV_MOD 12               /* samples the modulated line moves (+-) */
 static const uint16_t REV_LINE[4] = {1559, 1931, 2389, 2791};   /* 35..63 ms, coprime */
 static const uint16_t REV_AP[2] = {556, 441};
-static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2];   /* (.bss: the pool is full) */
+static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2] __attribute__((section(".lowram")));   /* (the pool is
+                                                                      * full; .lowram: the SRAM below the RAM region, app.ld) */
 static int16_t rev_ap[556 + 441] __attribute__((section(".pool")));
 static struct {
     uint32_t dly_w, cho_w, cho_ph, rev_ph;
@@ -309,9 +310,11 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
  * (tests/regress.c gives the golden hashes under every mode of the host double: tests/cpu1_modes.sh). */
 static void events_block(uint32_t n);                    /* seq.c */
 typedef struct { int32_t l[CTL], r[CTL], sc[CTL], sd[CTL], sr[CTL]; } mixacc_t;   /* dry L, R; chorus, delay, reverb sends */
-static mixacc_t acc[2];                                  /* core 0's, core 1's */
-static int32_t wet_l[CTL], wet_r[CTL], part_buf[2][CTL];   /* part_buf: a part's scratch, one per core */
-static int32_t drum_buf[4][CTL];                         /* the drums through the drum track's FILTER: L, R, reverb, delay */
+static mixacc_t acc[2] __attribute__((section(".lowram")));          /* core 0's, core 1's (.lowram: app.ld, main.c) */
+static int32_t wet_l[CTL], wet_r[CTL];
+static int32_t part_buf[2][CTL] __attribute__((section(".lowram")));   /* a part's scratch, one per core */
+static int32_t drum_buf[4][CTL] __attribute__((section(".lowram")));   /* the drums through the drum track's FILTER: L, R,
+                                                                        * reverb, delay */
 
 /* ---- mute / solo: a track that goes silent fades out over ~6 ms (and back in) */
 #define MUTE_STEP 4096                                  /* Q15 per block: 8 blocks */
@@ -646,7 +649,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b);
  * The sound set aside per core, as part_buf is (a part may fade on each core at once) */
 static void mix_part(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)   /* into the set mx, through the scratch b */
 {
-    static int16_t pnew[2][P_COUNT];
+    static int16_t pnew[2][P_COUNT] __attribute__((section(".lowram")));
     int16_t *pn = pnew[mx != &acc[0]];
     if (!(t->pold && t->xf_on && t->xf)) {
         mix_part_run(t, n, mx, b);
