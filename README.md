@@ -7,7 +7,10 @@
 > across both cores, with a bit-identical result; since patch 5 (11/10/2026) the split costs SLOOP's RAM budget
 > nothing: the branch's buffers, core 1's stacks and SLOOP's own reverb lines live in 29 KB of SRAM below the RAM
 > region that no FM-1 firmware had used (the RAM region goes from 96.5 to 73.8 KB of its 96 KiB). What it adds, its
-> status, how to build and install it: [DUALCORE.md](DUALCORE.md).
+> status, how to build and install it: [DUALCORE.md](DUALCORE.md). The second, branch `ram`, on top of it: four
+> reductions inside the RAM region (the MIDI note table in nibbles, one scratch for the main loop's short-lived
+> buffers, the user preset banks read where they are in the flash, the DRAWBAR state in the engine arena), 58.2 KB
+> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md).
 > Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
 > [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
 > Claude (the commits say so). GPL-3.0-only, as all of them.

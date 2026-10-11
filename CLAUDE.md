@@ -49,6 +49,20 @@ may be moved there too when a merge overflows the region (the reverb lines were 
 the split render plays; first figure: CPU 31 % with 2ND CORE OFF, 23 % ON on the owner's pattern. The 2.6 build, the
 `.lowram` proof, the stack figures, the console figures and a worst-case pattern are still to come from the device.
 
+## Branch `ram` (11/10/2026, on top of `dualcore`)
+
+Four commits, each a RAM reduction with its measured delta, the goldens unchanged ([RAM.md](RAM.md) has the table):
+`midi_sel_on` in nibbles (seq.c); `firmware/src/scratch.h`, one union for `st_buf`, `vis_l` / `vis_r`, the HOME
+scope's snapshot and `ota_dec` (main loop only, filled and consumed inside one call: the rules are in the header),
+with the OTA staging over `proj_tmp` (`felucca.c OTA_STAGE_RAM`; the host tests keep `ota.c`'s statics); the user
+preset banks read in place (`storage.c st_xip`, firmware only through `ST_XIP_PTR`; `upreset.c up_bank_xip[]`,
+`up_rec_none`, `up_put` staging in `proj_tmp` through `project.c up_stage`; `tests/upreset_test.c` keeps the RAM
+banks under `UP_HOST`; without a flash the message is NO FLASH); the DRAWBAR part state in the engine arena
+(`drw_part_t` in `engines.c`'s union; the wheels' phases restart after GRAIN / FM6 / PHYS took the part). RAM region
+58,220 B. Not done: `st_buf`'s removal (1.8 KB after the union), `usr_zone` / `dsu` in place (the ISR reads them
+while the editor rewrites). Merging a SLOOP release here: merge upstream into `dualcore` first, then `dualcore`
+into `ram`; the conflicts will be in `upreset.c`, `storage.c`, `ota.c`, `editor.c` (the bank paths).
+
 ## The render split: what may and may not be shared
 
 A unit (a synth part, or the drums with the metronome) may only touch its own state while another unit renders
