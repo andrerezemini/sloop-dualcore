@@ -1,7 +1,7 @@
 # SLOOP on both cores: the `dualcore` branch of sloop-lab
 
 A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) (isod89) that makes the M-VAVE FM-1's second
-processor core available to the audio render. Everything else is SLOOP, unchanged; the branch is a short
+processor core available to the audio render. Everything else is SLOOP, unchanged; the work is a short
 series of patches meant to be re-applied on each SLOOP release, and offered upstream.
 
 The second core's start-up sequence is [X0X](https://github.com/charlesvestal/fm1-x0x)'s (Charles Vestal),

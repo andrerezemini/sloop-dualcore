@@ -1,24 +1,4 @@
-# sloop-lab
-
-> **SLOOP, with experiments.** A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) by isod89, the
-> groovebox firmware for the M-VAVE FM-1, where additions are tried as short series of patches that can be
-> re-applied on each SLOOP release and offered upstream. The first, on branch `dualcore`: SLOOP 2.6 (since
-> 11/10/2026; 2.5 before) with the FM-1's second processor core brought up at boot and the audio render split
-> across both cores, with a bit-identical result; since patch 5 (11/10/2026) the split costs SLOOP's RAM budget
-> nothing: the branch's buffers, core 1's stacks and SLOOP's own reverb lines live in 29 KB of SRAM below the RAM
-> region that no FM-1 firmware had used (the RAM region goes from 96.5 to 73.8 KB of its 96 KiB). What it adds, its
-> status, how to build and install it: [DUALCORE.md](DUALCORE.md). The second, branch `ram`, on top of it: four
-> reductions inside the RAM region (the MIDI note table in nibbles, one scratch for the main loop's short-lived
-> buffers, the user preset banks read where they are in the flash, the DRAWBAR state in the engine arena), 58.2 KB
-> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md).
-> Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
-> [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
-> Claude (the commits say so). GPL-3.0-only, as all of them.
->
-> Everything below this line is SLOOP's own README, unchanged: its links point at SLOOP's site, editor and
-> releases, not at this fork's.
-
----
+<p align="center"><img src="assets/logo/sloop-logo.png" alt="SLOOP" width="420"></p>
 
 <p align="center"><b>A live groovebox firmware for the M-VAVE FM-1 — for any style.</b><br>
 Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments.</p>
@@ -32,6 +12,8 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 <a href="../../releases">Releases</a> ·
 <a href="../../issues">Report a bug</a>
 </p>
+
+---
 
 SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths and a drum machine** with 16 sounds on the white keys, twelve synthesis engines, 153 sounds, 37 drum kits, your own samples, a song mode you play with your hands, USB audio, MIDI in on the jack and MIDI clock — and now **physical models** (guitars, sitar, bells, hand drums), a **noise** engine, **six-operator FM with DX7 patches**, **parameter locks**, **micro timing**, **fills**, a **quick chain** of sections and the **sequencer to MIDI out**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
