@@ -34,7 +34,7 @@ const E = vm.runInNewContext(proto + `
    CHOP, chopNovelty, chopHits, chopSnap, chopGrid, chopEqual, chopList, chopPick, chopFit, chopZones, wavFile, zipStore, crc32,
    UP, bank, capturePatch, auditionPatch, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, GM_DRUM, drumName, parseNotes, fmtValue, F, DRUM_LANES, LV_NAMES, emptyDrum, lockable, MICRO, FC, fillGet, fillSet, pack7, unpack7,
-   backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast })`,
+   backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, SetGate, SYNTH_PROJECT, readBackupObject, writeBackupObject, bkProjFormat, bkDevFormat, bkFwAtLeast })`,
 { setTimeout, clearTimeout, setInterval, clearInterval, console, TextEncoder, TextDecoder, Blob, Response, DecompressionStream });
 
 async function editorMock() {
@@ -694,7 +694,7 @@ async function editorV5() {
 /* ----------------------------- editor protocol v7: nudges and parameter locks (SLOOP 2.4) --- */
 async function editorV7() {
   const C = E.CMD;
-  const { m, rq, ev, done } = attachMock({ watchMs: 1000 });
+  const { m, rq, ev, done } = attachMock({ watchMs: 1000, synth: true });
   const info = E.parse[C.INFO](await rq(E.req.info()));
   ok(info.proto === 10, "v7: INFO ends with 10 (v10 includes v7)");
   /* the lockable set == seq.c p_lockable (the ids as core.h names them) */
@@ -703,9 +703,9 @@ async function editorV7() {
   for (const nm of (/enum \{\s*\/\* per-track parameters \*\/([^}]*)\}/.exec(ch) || [])[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((x) => x.trim()).filter(Boolean)) ids[nm] = n++;
   const lockableC = (id) => id <= ids.P_LD_AMP || id === ids.P_SGATE || (id >= ids.P_DIST && id <= ids.P_REV) || id === ids.P_GLIDE || id === ids.P_PAN
     || id === ids.P_DETUNE || (id >= ids.P_SLCR && id <= ids.P_SLDEPTH) || (id >= ids.P_E0 && id <= ids.P_E7) || id === ids.P_TFLT
-    || (id >= ids.P_IA && id <= ids.P_IMIX);   /* 2.6: the INSERT's values */
-  let same = ids.P_COUNT === 71 && ids.P_E0 === 63;
-  for (let id = 0; id < 71; id++) same = same && !!E.lockable(id, 63) === !!lockableC(id);
+    || (id >= ids.P_IA && id <= ids.P_IMIX) || [ids.P_M1AMT,ids.P_M2AMT,ids.P_M3AMT,ids.P_M4AMT,ids.P_TRES].includes(id);   /* 2.6: the INSERT's values */
+  let same = ids.P_COUNT === 89 && ids.P_E0 === 81;
+  for (let id = 0; id < 89; id++) same = same && !!E.lockable(id, 81) === !!lockableC(id);
   for (let id = 0; id < 61; id++) same = same && !!E.lockable(id, 53) === (id >= 53 || !!lockableC(id));   /* (older firmware: E 53..60) */
   ok(same && /id <= P_LD_AMP \|\| id == P_SGATE \|\| \(id >= P_DIST && id <= P_REV\) \|\| id == P_GLIDE \|\| id == P_PAN/.test(sc)
     && !E.lockable(ids.P_SLEN) && !E.lockable(ids.P_AMODE) && !E.lockable(ids.P_VOICE) && !E.lockable(ids.P_CHORD) && E.lockable(ids.P_E7),
@@ -1469,6 +1469,57 @@ async function updater() {
   ok(e6 && /official FM-1 V15/.test(e6.message), "fm1pkg.js: only the exact official V15 is accepted (SHA-256)");
 }
 
+async function editorSynth() {
+  const {m,rq,done}=attachMock({synth:true,auto:false}), C=E.CMD;
+  const info=E.parse[C.INFO](await rq(E.req.info()));
+  ok(info.pcount===89&&info.pe0===81&&info.gcount===46&&info.engines[12]==="TERRAIN", "synth: INFO, stable legacy engines and appended TERRAIN");
+  const desc=[];for(let i=63;i<81;i++)desc.push(E.parse[C.DESC](await rq(E.req.desc(0,i))));
+  const rt=E.parse[C.DESC](await rq(E.req.desc(1,45)));
+  ok(desc.length===18&&desc[0].names.at(-1)==="LFO2"&&desc[1].names.at(-1)==="TIME"&&desc[2].min===-64&&desc[16].min===-40&&desc[17].names[1]==="LP24"&&rt.names.join()==="FDN,ROOM,SPRNG,HALL", "synth: matrix, LFO2, ladder and reverb descriptors");
+  const an=E.parse[C.NAMES](await rq(E.req.names(0))), tr=E.parse[C.NAMES](await rq(E.req.names(12)));
+  ok(an.names.length===30&&an.names[22]==="LADDER ACID"&&tr.names.length===8&&tr.names[7]==="ISLAND DRONE", "synth: eight appended analog presets and eight terrain presets");
+  await rq(E.req.preset(0,22));let d=E.parse[C.DUMP](await rq(E.req.dump()),info);
+  ok(d.p[58]===3&&d.p[63]===3&&d.p[64]===2&&d.p[65]===20,"synth: expressive factory preset loads ladder and velocity matrix");
+  await rq(E.req.preset(12,7));d=E.parse[C.DUMP](await rq(E.req.dump()),info);
+  ok(d.p[63]===11&&d.p[75]===15&&d.g[45]===3,"synth: terrain drone loads independent LFO2 and HALL recommendation");
+  await rq(E.req.project(1,0));
+  let arc=await E.backupCapture(rq,info), objects=E.backupObjects(arc), raw=objects.get(2);
+  ok(E.SYNTH_PROJECT.valid(raw)&&raw.length===3684&&E.bkDevFormat(info)===7,"synth: backup emits checked compact FUN7 project");
+  const next=E.SYNTH_PROJECT.withFX(raw,{delayOverride:true,reverbOverride:true,rtype:2,size:107,time:6,feedback:95,mix:82});
+  ok(E.SYNTH_PROJECT.valid(next)&&E.SYNTH_PROJECT.fx(next).rtype===2&&eq(raw.slice(80,3680),next.slice(80,3680)),"synth: section FX updates checksum and preserves every track byte");
+  const broken=next.slice();broken[100]^=1;let rejected=false;try{E.SYNTH_PROJECT.withFX(broken,{rtype:1});}catch{rejected=true;}
+  ok(rejected,"synth: damaged section rejected before edit");
+  const layoutCode=html.slice(html.indexOf("const EXPECT ="),html.indexOf("/* globals that are actions"));
+  const layout=vm.runInNewContext(layoutCode+";LAYOUT(81)");
+  ok(layout.find(x=>x.t==="MOD").pages.length===4&&layout.find(x=>x.t==="LFO").pages.some(x=>x[0]==="LFO SYNC")&&
+    layout.find(x=>x.t==="LFO").pages.some(x=>x[2].join()==="75,76,77,78")&&layout.find(x=>x.t==="FX").pages.some(x=>x[2].join()==="45,8,9"),
+    "synth: live editor layout exposes MOD, LFO SYNC, LFO2, track ladder and REVERB");
+  const nodes=new Map(),make=(tag,attrs={},...children)=>({tag,attrs,children,append(...x){this.children.push(...x)},replaceChildren(...x){this.children=x},classList:{add(){}}});
+  const get=(id)=>{if(!nodes.has(id))nodes.set(id,make("div"));return nodes.get(id)};
+  const gdesc=[];for(const id of [4,5,6,7,8,9,45])gdesc[id]=E.parse[C.DESC](await rq(E.req.desc(1,id)));
+  const ui={SG:{sections:new Map([[0,next]]),fxDirty:new Set(),dirty:false},dev:{info,gdesc},SYNTH_PROJECT:E.SYNTH_PROJECT,$:get,el:make,t:x=>x};
+  const renderCode=html.slice(html.indexOf("function renderSongFX()"),html.indexOf("function renderSong()"));
+  vm.runInNewContext(renderCode+";renderSongFX();",ui);
+  const flatten=n=>[n,...(n.children||[]).filter(x=>typeof x==="object").flatMap(flatten)],controls=flatten(get("songfx"));
+  const flags=controls.filter(x=>x.tag==="input"&&x.attrs.type==="checkbox"),inputs=controls.filter(x=>x.tag==="input"&&x.attrs.type==="number"),selects=controls.filter(x=>x.tag==="select");
+  flags[0].attrs.onchange({target:{checked:false}});inputs[0].attrs.onchange({target:{value:999}});
+  const changed=E.SYNTH_PROJECT.fx(ui.SG.sections.get(0));
+  ok(flags.length===2&&inputs.length===5&&selects.length===2&&!changed.reverbOverride&&changed.size===127&&ui.SG.fxDirty.has(0)&&ui.SG.dirty,
+    "synth: section FX UI renders both override flags and seven controls; edits clamp and mark the correct section dirty");
+  await E.writeBackupObject(rq,2,next);
+  let listing=E.parse[C.BK_LIST](await rq(E.req.bkList()));let stored=await E.readBackupObject(rq,listing.items.find(x=>x.id===2));
+  ok(eq(next,stored),"synth: section FX survives BK_PUT/BK_GET flash roundtrip");
+  m.sim.play(true);let stop=false;try{await E.writeBackupObject(rq,2,raw);}catch(e){stop=/Stop playback/.test(e.message);}m.sim.play(false);
+  ok(stop,"synth: section FX writes refused during playback");
+  // A FUN7 backup must be refused before the first write to a legacy device.
+  const old=attachMock({auto:false});let writes=0,err;
+  try{await E.backupRestore(async(r,o)=>{if(r[0]!==C.INFO)writes++;return old.rq(r,o);},arc);}catch(e){err=e;}
+  ok(err&&err.code==="bkNewer"&&!writes,"synth: old firmware restore guard runs before preset bank writes");old.done();
+  await E.backupRestore(rq,arc);d=E.parse[C.DUMP](await rq(E.req.dump()),info);
+  ok(d.engine===12&&d.p[63]===11&&d.p[75]===15,"synth: full binary project restore retains new engine and modulation");
+  done();
+}
+await editorSynth();
 await editorMock();
 await editorLibrarian();
 await editorLive();

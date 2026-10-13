@@ -564,6 +564,7 @@
         <p class="dim" data-t="songHelp"></p>
         <p class="bad" id="songerr" hidden></p>
         <div id="songbody" hidden>
+          <div id="songfx"></div>
           <table class="song"><thead><tr><th>#</th><th data-t="songSection"></th><th data-t="songBars"></th><th data-t="songTimes"></th><th></th></tr></thead>
             <tbody id="songrows"></tbody></table>
           <p class="bad" id="songempty" data-t="songEmpty" hidden></p>
@@ -709,8 +710,8 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
 /* v7: the parameters a step can lock (firmware seq.c p_lockable: the sound, not the sequencer / arp / key / voice
    mode); ids as core.h: LEVEL .. LFO dests, GATE, the sends, GLIDE, PAN, DETUNE, the SLICER, FILTER, the engine's 8;
    from 2.6 (pe0 63) also the INSERT's A B C and MIX (54..57). pe0: the device's (the newest when none) */
-const lockable = (id, pe0 = typeof dev !== "undefined" && dev && dev.info ? dev.info.pe0 : 63) => id <= 16 || id === 32 || (id >= 33 && id <= 36) || id === 38 || id === 39
-  || id === 44 || (id >= 45 && id <= 48) || id === 50 || (pe0 >= 63 && id >= 54 && id <= 57) || (id >= pe0 && id <= pe0 + 7);
+const lockable = (id, pe0 = typeof dev !== "undefined" && dev && dev.info ? dev.info.pe0 : 81) => id <= 16 || id === 32 || (id >= 33 && id <= 36) || id === 38 || id === 39
+  || id === 44 || (id >= 45 && id <= 48) || id === 50 || (pe0 >= 63 && id >= 54 && id <= 57) || (pe0 >= 81 && [65, 68, 71, 74, 79].includes(id)) || (id >= pe0 && id <= pe0 + 7);
 const MICRO = { MIN: -32, MAX: 31 };                 /* a step's nudge in 1/64 of a step (- early, + late), sent + 64 */
 /* v8: a step's fill condition (firmware core.h FC_*): 0 normal, 1 plays only during a fill, 2 silent during one; 2 bits a
    step, 4 steps a byte (step i: byte i >> 2, bits 2 (i & 3)..), the 16 bytes sent pack7 */
@@ -1744,8 +1745,56 @@ function backupObjects(file) {
 /* write it back: banks, projects, the working project, the settings, then the samples */
 /* the project format of a backup object ("FUN6" .. as stored, low byte first: 6 ..), 0 not a project */
 const bkProjFormat = (d) => (d && d.length >= 4 && d[1] === 0x4E && d[2] === 0x55 && d[3] === 0x46 ? d[0] - 0x30 : 0);
+/* FUN7 is fixed, little endian, with the same FNV-1a as project.c. Editing
+ * section FX preserves all track bytes and validates the original before writing. */
+const SYNTH_PROJECT = {
+  SIZE: 3684, TRACK: 80, STRIDE: 900,
+  hash(b) { let h = 0x811C9DC5; for (const x of b) h = Math.imul(h ^ x, 16777619); return h >>> 0; },
+  valid(b) {
+    if (!b || b.length !== 3684 || bkProjFormat(b) !== 7) return false;
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    return v.getUint32(4, true) === b.length && v.getUint32(3680, true) === this.hash(b.subarray(0, 3680));
+  },
+  seal(b) { new DataView(b.buffer, b.byteOffset, b.byteLength).setUint32(3680, this.hash(b.subarray(0, 3680)), true); return b; },
+  fx(b) {
+    if (!this.valid(b)) throw new Error("Unsupported or damaged section project");
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength), g = (i) => v.getInt16(8 + 2*i, true);
+    return { delayOverride: !!(b[77] & 1), reverbOverride: !!(b[77] & 2), rtype: b[76],
+      time: g(4), feedback: g(5), color: g(6), mix: g(7), size: g(8), damp: g(9) };
+  },
+  withFX(b, patch) {
+    const o = Uint8Array.from(b), f = { ...this.fx(b), ...patch }, v = new DataView(o.buffer);
+    for (const [key, max, id] of [["time",8,4],["feedback",120,5],["color",127,6],["mix",127,7],["size",127,8],["damp",127,9],["rtype",3,-1]]) {
+      if (!Number.isInteger(f[key]) || f[key] < 0 || f[key] > max) throw new Error("Invalid section FX: " + key);
+      if (id >= 0) v.setInt16(8 + id*2, f[key], true); else o[76] = f[key];
+    }
+    o[77] = (f.delayOverride ? 1 : 0) | (f.reverbOverride ? 2 : 0);
+    return this.seal(o);
+  },
+};
+async function readBackupObject(rq, it) {
+  const data = new Uint8Array(it.len);
+  for (let off = 0; off < it.len; off += 256) {
+    const n = Math.min(256, it.len - off), g = parse[CMD.BK_GET](await rq(req.bkGet(it.id, off, n), { timeout: 1500, retries: 2 }));
+    if (g.rc || g.data.length !== n) throw new Error(`object ${it.id}: GET rc ${g.rc}`);
+    data.set(g.data, off);
+  }
+  if (crc32(data) !== it.crc) throw new Error("Section changed during read; read again");
+  return data;
+}
+async function writeBackupObject(rq, id, data) {
+  let r = parse[CMD.BK_PUT](await rq(req.bkBegin(id, data.length, crc32(data)), { timeout: 1500, retries: 1 }));
+  if (r.rc) throw new Error(`section: begin rc ${r.rc}`);
+  for (let off = 0; off < data.length; off += 256) {
+    r = parse[CMD.BK_PUT](await rq(req.bkData(id, off, data.subarray(off, off + 256)), { timeout: 1500, retries: 1 }));
+    if (r.rc) throw new Error(`section: data rc ${r.rc}`);
+  }
+  r = parse[CMD.BK_PUT](await rq(req.bkCommit(id), { timeout: 5000, retries: 0 }));
+  if (r.rc === 3) throw new Error("Stop playback before saving section FX");
+  if (r.rc) throw new Error(`section: commit rc ${r.rc}`);
+}
 /* the newest project format a device reads, from its INFO: 2.6 (71 parameters) 6, 2.4 .. 2.5 (61) 5, older 4 */
-const bkDevFormat = (info) => (info.pcount >= 71 ? 6 : info.pcount >= 61 ? 5 : 4);
+const bkDevFormat = (info) => (info.pcount >= 89 ? 7 : info.pcount >= 71 ? 6 : info.pcount >= 61 ? 5 : 4);
 /* "SLOOP 2.6" -> true when at least maj.min.patch */
 const bkFwAtLeast = (v, want) => {
   const m = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(v || ""));
@@ -1877,7 +1926,7 @@ async function capturePatch(rq, info, name) {
 
 /* what loading a sound leaves alone (firmware ui.c param_kept): the mix (LEVEL, PAN, MUTE), the pattern
    parameters (LEN, DIV, SWG, GATE) and the key the part plays in (ROOT, SCL, QNT; CHORD from SLOOP 2.0); the track FILTER (2.4) */
-const keptIds = (info) => new Set([0, 25, 26, 27, 29, 30, 31, 32, 39, 40, ...(info.pe0 > 49 ? [49] : []), ...(info.pe0 > 50 ? [50] : []), ...(info.pe0 > 52 ? [51, 52] : [])]);
+const keptIds = (info) => new Set([0, 25, 26, 27, 29, 30, 31, 32, 39, 40, ...(info.pe0 > 49 ? [49] : []), ...(info.pe0 > 50 ? [50] : []), ...(info.pe0 > 52 ? [51, 52] : []), ...(info.pe0 >= 81 ? [79, 80] : [])]);
 /* play a patch without writing flash, as UP_LOAD would load it: SET the engine (G_ENGSEL, engine defaults),
    then every parameter of the sound that differs. Never the pattern (LIVE: a sound never changes the
    sequence), the mix or the key. opt: {gEng: G_ENGSEL id, progress(i, n)} -> {wrote: false} */
@@ -2146,6 +2195,15 @@ function makeMockDevice(opt = {}) {
     E("SYNC", ["OFF", "4BAR", "2BAR", "1BAR", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0),
     E("TRIG", ["NOTE", "FREE"], 0), E("POL", ["BI", "UNI"], 0),
   ];
+  if (opt.synth) {
+    const src = ["OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW", "LFO2"];
+    const dst = ["OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RATE", "VIB",
+      "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME"];
+    TP[58] = E("TYPE", ["LP", "BP", "HP", "LP24"], 0);
+    for (let k = 0; k < 4; k++) TP.push(E("SRC", src, 0), E("DST", dst, 0), D("AMT", F.BIPCT, -64, 63, 0));
+    TP.push(D("RATE", F.LFOHZ, 0, 127, 0), E("WAVE", TP[10].names, 0), E("SYNC", TP[60].names, 0),
+      D("PHS", F.INT, 0, 127, 0), D("RES", F.INT, -40, 87, 0), E("TYPE", ["SVF", "LP24"], 0));
+  }
   const GP = [
     D("BPM", F.BPM, 40, 240, 90), D("SWING", F.SWING, 0, 100, 0), E("CLICK", ["OFF", "REC", "ON"], 0), D("TUNE", F.INT, -50, 50, 0),
     E("TIME", NDLY, 1), D("FDBK", F.PCT, 0, 120, 60), D("COLR", F.PCT, 0, 127, 70), D("MIX", F.PCT, 0, 127, 90),
@@ -2166,6 +2224,10 @@ function makeMockDevice(opt = {}) {
     E("RATE", ["1BAR", "2BAR", "4BAR", "8BAR", "16BAR"], 2), E("WHEN", ["PLAY", "ALWAYS"], 0), E("DUCK", NONOFF, 0),
     D("BEND", F.SEMI, 1, 12, 2),                    /* GLO > MIDI 2 (2.6): the pitch bend's range */
   ];
+  if (opt.synth) {
+    GP.push(E("TYPE", ["FDN", "ROOM", "SPRNG", "HALL"], 0));
+    GP[20].names = GP[20].names.concat("TERRAIN"); GP[20].max++;
+  }
   /* the drum track's P_E0: its kit (drums.c DRUM_KIT_NAMES; 5 = 808, the power-on kit) */
   const KIT = E("KIT", ["ACOUSTIC", "DEEP", "TIGHT", "BRIGHT", "DUST", "808", "909", "606", "80S", "VINTAGE", "TRAP", "DRILL", "BOOMBAP", "LO-FI", "PHONK", "HOUSE", "D.HOUSE", "TECHNO", "MINIMAL", "ELECTRO", "DISCO", "GARAGE", "JUNGLE", "DUBSTEP", "DEMBOW", "AMAPIANO", "AFRO", "LATIN", "TRIBAL", "SYNTHWV", "CHIP", "ARCADE", "GLITCH", "INDUSTR", "HYPER", "AMBIENT", "JAZZ", "USR1", "USR2", "USR3", "USR4", "USR3+4", "SYN1", "SYN2", "SYN3", "SYN4"], 0);
   /* a GM note -> its drum lane (drums.c LANE_OF_GM: 35..81) */
@@ -2312,6 +2374,53 @@ function makeMockDevice(opt = {}) {
         P("BITCRUSH", [0, 40, 90, 40, 64, 0, 0, 100], [0, 70, 110, 40], 0),
         P("RADIO", [2, 20, 70, 90, 64, 0, 60, 48], [10, 70, 120, 50], 0)] },
   ];
+  if (opt.synth) {
+    ENG[0].presets = [
+      {"name":"808 BOOM","e":[3,0,0,0,127,0,48,0],"env":[0,112,0,52],"fenv":0,"mono":1,"fx":[0,0,0,0],"x":{"38":59,"41":1,"6":18,"28":-24}},
+      {"name":"808 DIRTY","e":[3,0,0,0,96,12,118,30],"env":[0,108,0,46],"fenv":0,"mono":1,"fx":[24,0,0,0],"x":{"38":56,"41":1,"6":24,"28":-24}},
+      {"name":"SUB BASS","e":[3,0,0,0,127,0,10,0],"env":[0,60,118,24],"fenv":0,"mono":1,"fx":[0,0,0,0],"x":{"38":40,"28":-24}},
+      {"name":"808 SLIDE","e":[3,0,0,0,127,0,72,0],"env":[0,118,0,60],"fenv":0,"mono":1,"fx":[30,0,0,0],"x":{"38":82,"41":1,"6":12,"28":-24}},
+      {"name":"ACID 303","e":[0,0,0,0,36,112,44,64],"env":[0,56,24,20],"fenv":52,"mono":1,"fx":[28,0,22,10],"x":{"38":34,"41":1,"28":-12}},
+      {"name":"PLUGG BASS","e":[2,0,0,0,92,0,30,0],"env":[0,96,92,34],"fenv":0,"mono":1,"fx":[0,0,0,6],"x":{"38":52,"41":1,"28":-24}},
+      {"name":"REESE","e":[0,22,64,0,56,22,36,40],"env":[0,70,118,28],"fenv":0,"mono":1,"fx":[0,22,0,6],"x":{"9":22,"14":10,"28":-24}},
+      {"name":"WOBBLE","e":[0,9,64,0,38,72,62,30],"env":[0,64,127,22],"fenv":0,"mono":1,"fx":[10,0,0,4],"x":{"9":74,"14":40,"28":-24}},
+      {"name":"FUNK BASS","e":[1,6,50,0,50,30,22,64],"env":[0,55,62,20],"fenv":30,"mono":1,"fx":[0,0,0,4],"x":{"38":50,"41":1,"28":-24}},
+      {"name":"G-FUNK LD","e":[2,0,0,0,92,0,10,64],"env":[6,70,112,46],"fenv":0,"mono":1,"fx":[0,0,28,30],"x":{"38":74,"13":2,"9":89,"12":50}},
+      {"name":"TRAP PLUCK","e":[0,8,64,0,52,35,20,64],"env":[0,80,24,45],"fenv":48,"mono":0,"fx":[0,15,34,26]},
+      {"name":"SYN BRASS","e":[0,10,64,0,45,20,16,64],"env":[12,70,96,35],"fenv":34,"mono":0,"fx":[0,15,12,24]},
+      {"name":"SUPERSAW","e":[0,14,64,0,96,12,10,64],"env":[4,70,112,46],"fenv":10,"mono":1,"fx":[0,20,30,36],"x":{"37":3,"44":64,"38":30}},
+      {"name":"WARM PAD","e":[4,12,64,6,52,8,0,32],"env":[75,90,115,90],"fenv":0,"mono":0,"fx":[0,55,20,55],"x":{"9":30,"15":20}},
+      {"name":"DARK STR","e":[0,18,64,0,48,6,0,32],"env":[60,90,118,85],"fenv":0,"mono":0,"fx":[0,50,18,60]},
+      {"name":"ATMOS PAD","e":[4,25,64,20,60,15,0,32],"env":[90,100,120,100],"fenv":0,"mono":0,"fx":[0,60,30,75],"x":{"9":18,"13":1}},
+      {"name":"PAN FLUTE","e":[2,0,0,30,70,10,0,64],"env":[14,70,110,40],"fenv":0,"mono":1,"fx":[0,10,24,45],"x":{"13":1,"9":80,"12":70}},
+      {"name":"FAT LEAD","e":[0,8,64,0,70,30,30,64],"env":[2,70,110,30],"fenv":30,"mono":1,"fx":[0,0,26,20],"x":{"38":40}},
+      {"name":"MONO BASS","e":[0,4,64,0,48,36,30,64],"env":[0,60,70,20],"fenv":44,"mono":1,"fx":[10,0,0,4],"x":{"28":-24}},
+      {"name":"PWM LEAD","e":[4,0,0,0,80,20,10,64],"env":[2,70,110,30],"fenv":0,"mono":1,"fx":[0,10,26,22],"x":{"13":1,"9":80,"12":60,"38":30}},
+      {"name":"SAW BASS","e":[0,6,64,0,52,30,40,64],"env":[0,60,60,20],"fenv":30,"mono":1,"fx":[8,0,0,4],"x":{"28":-24}},
+      {"name":"SINE PAD","e":[3,10,64,4,90,0,0,32],"env":[80,90,118,90],"fenv":0,"mono":0,"fx":[0,60,20,65]},
+      {"name":"LADDER ACID","e":[0,0,0,0,31,106,30,64],"env":[0,61,16,26],"fenv":51,"mono":1,"fx":[10,0,24,16],"x":{"58":3,"63":3,"64":2,"65":20}},
+      {"name":"WHEEL LEAD","e":[0,9,62,0,56,63,20,64],"env":[3,65,108,42],"fenv":12,"mono":1,"fx":[0,12,30,28],"x":{"58":3,"63":6,"64":2,"65":38}},
+      {"name":"AFTER BRASS","e":[0,14,66,0,48,48,14,64],"env":[18,70,102,40],"fenv":28,"mono":0,"fx":[0,20,14,38],"x":{"58":3,"63":7,"64":2,"65":30}},
+      {"name":"SLEW PAD","e":[4,19,60,3,61,36,0,32],"env":[80,94,114,96],"fenv":0,"mono":0,"fx":[0,46,22,70],"x":{"58":3,"63":10,"64":2,"65":16},"rtype":4},
+      {"name":"EXPR KEYS","e":[2,8,56,0,72,22,6,60],"env":[5,72,76,56],"fenv":17,"mono":0,"fx":[0,18,22,40],"x":{"58":3,"63":8,"64":2,"65":18}},
+      {"name":"RAND PLUCK","e":[0,6,48,0,43,85,22,64],"env":[0,65,0,40],"fenv":42,"mono":0,"fx":[0,8,36,32],"x":{"58":3,"63":5,"64":2,"65":16}},
+      {"name":"DUAL ORBIT","e":[4,16,64,0,76,16,0,40],"env":[60,82,116,82],"fenv":0,"mono":0,"fx":[0,44,28,58],"x":{"75":24,"63":11,"64":3,"65":32}},
+      {"name":"HALL SWELL","e":[0,22,62,5,63,28,0,32],"env":[84,92,112,100],"fenv":0,"mono":0,"fx":[0,40,16,76],"x":{"58":3,"63":3,"64":9,"65":18},"rtype":4}
+    ];
+    ENG.push({ name: "TERRAIN", titles: ["TERRAIN", "ORBIT"], edit: [D("TERR", F.PCT, 0, 127, 0),
+      D("RAD", F.PCT, 0, 127, 64), D("X", F.BIPCT, -63, 63, 0), D("Y", F.BIPCT, -63, 63, 0),
+      D("RATIO", F.INT, 1, 8, 1), D("ROT", F.PCT, 0, 127, 0), D("DRV", F.PCT, 0, 127, 0), D("CUT", F.CUTOFF, 0, 127, 110)],
+      presets: [
+        {"name":"ORBIT KEYS","e":[0,62,0,0,1,0,0,104],"env":[4,70,65,48],"fenv":0,"mono":0,"fx":[0,14,20,32]},
+        {"name":"RIDGE BASS","e":[30,87,-22,12,1,0,24,78],"env":[0,68,85,26],"fenv":16,"mono":1,"fx":[0,0,0,12],"x":{"28":-24}},
+        {"name":"GLASS ORBIT","e":[64,43,18,-12,2,32,0,115],"env":[0,90,18,76],"fenv":0,"mono":0,"fx":[0,12,35,58]},
+        {"name":"RIDGE PAD","e":[95,58,-8,20,1,24,0,89],"env":[78,86,108,92],"fenv":0,"mono":0,"fx":[0,42,24,68],"x":{"63":1,"64":12,"65":12,"9":19}},
+        {"name":"TERRAIN BELL","e":[127,38,9,12,3,0,0,116],"env":[0,98,0,76],"fenv":0,"mono":0,"fx":[0,8,34,48]},
+        {"name":"CONTOUR LD","e":[46,86,18,-8,1,62,38,102],"env":[2,62,108,38],"fenv":0,"mono":1,"fx":[0,10,25,28],"x":{"63":6,"64":12,"65":30,"38":32}},
+        {"name":"TOPO PLUCK","e":[82,73,-26,-8,2,18,14,108],"env":[0,66,0,52],"fenv":20,"mono":0,"fx":[0,12,30,42]},
+        {"name":"ISLAND DRONE","e":[112,104,-15,18,1,80,10,88],"env":[90,96,120,98],"fenv":0,"mono":0,"fx":[0,48,26,74],"x":{"63":11,"64":14,"65":18,"75":15},"rtype":4}
+      ] });
+  }
   const FM6_E = ENG.findIndex((e) => e.name === "FM6"), FM6_BANK = 27, FM6_NPART = 3;
   const v9 = !opt.legacy && !opt.v3 && !opt.noBackup && !opt.v7 && !opt.v8;   /* SLOOP 2.4: FM6 patches */
   const v10 = v9 && !opt.v9;                         /* SLOOP 2.5: the SYN drum kits */
@@ -2381,6 +2490,13 @@ function makeMockDevice(opt = {}) {
     st.p[37] = pr.mono ? 2 : 0;
     st.p[33] = 0; st.p[34] = 24; st.p[35] = 28; st.p[36] = 36;
     for (let i = P_SLCR; i < P_CHORD; i++) st.p[i] = TP[i].def;   /* a factory preset turns the SLICER off (CHORD stays: the key) */
+    if (opt.synth) {
+      for (let i = 53; i < 79; i++) st.p[i] = TP[i].def;
+      if (pr.fx) pr.fx.forEach((v, i) => { st.p[33 + i] = v; });
+      if (pr.fenv != null) st.p[5] = pr.fenv;
+      for (const [id, val] of Object.entries(pr.x || {})) st.p[+id] = val;
+      if (pr.rtype) st.g[45] = pr.rtype - 1;
+    }
     if (demo && pr.pat && seqEmpty()) loadPattern(pr.pat - 1);
     if (st.engine === FM6_E) fm6Slot(st.tracks[st.sel], st.p[P_E0 + 7]);   /* eng_fm6.c fm6_track_loaded: the slot's patch */
   }
@@ -2421,7 +2537,49 @@ function makeMockDevice(opt = {}) {
   setEngine(0);
   clearSteps();
   applyPreset(4, true);                             /* WOBBLE, a recorded-looking pattern on track 1 (mock only) */
-  const project = () => JSON.parse(JSON.stringify({ tracks: st.tracks, sel: st.sel, g: st.g }));
+  const project = () => JSON.parse(JSON.stringify({ tracks: st.tracks, sel: st.sel, g: st.g, fx_mask: st.fx_mask || 0 }));
+  function projectBytes(pr) {
+    if (!opt.synth) return Uint8Array.from(new TextEncoder().encode(JSON.stringify(pr)));
+    const b = new Uint8Array(SYNTH_PROJECT.SIZE), v = new DataView(b.buffer);
+    v.setUint32(0, 0x46554E37, true); v.setUint32(4, b.length, true);
+    pr.g.slice(0,32).forEach((x,i) => v.setInt16(8+2*i,x,true));
+    b[72]=pr.sel; b[73]=pr.g[32]; b[76]=pr.g[45]; b[77]=pr.fx_mask || 0;
+    b[74]=128|(pr.g[37]&15)|((pr.g[42]&1)<<4)|((pr.g[43]&1)<<5); b[75]=pr.g[41];
+    v.setInt16(8+24*2,(pr.g[38]&127)|((pr.g[39]+64)&127)<<7,true); v.setInt16(8+15*2,pr.g[40],true);
+    pr.tracks.forEach((t,k) => {
+      const at=80+900*k;
+      for(let i=0;i<81;i++) v.setInt8(at+i,t.p[i]);
+      for(let i=0;i<8;i++) v.setInt16(at+82+2*i,t.p[81+i],true);
+      b[at+98]=t.engine; b[at+99]=t.preset;
+      for(let i=0;i<64;i++) {
+        const q=at+100+10*i,x=t.step[i];
+        if(k===3) { const d=t.dstep[i]; v.setUint16(q,d.on,true); for(let l=0;l<16;l++) {b[q+2+(l>>2)]|=(d.lvl[l]&3)<<(2*(l&3)); b[q+6+(l>>2)]|=(d.rat[l]&3)<<(2*(l&3));} }
+        else b.set([...x.notes,x.n,x.time,x.flags,x.vel,x.lvl||0,x.rat||0],q);
+        b[at+740+i]=((t.micro[i]||0)&63)|((fillGet(t.fill,i)&3)<<6);
+      }
+      for(let i=0;i<24;i++){ const q=at+804+4*i,l=t.locks[i]; b[q]=l?l.step:255; if(l){b[q+1]=l.param;v.setInt16(q+2,l.value,true);} }
+    });
+    return SYNTH_PROJECT.seal(b);
+  }
+  function projectFromBytes(b) {
+    if(!opt.synth || bkProjFormat(b)!==7) return JSON.parse(new TextDecoder().decode(b));
+    if(!SYNTH_PROJECT.valid(b)) throw new Error("FUN7 checksum");
+    const pr=project(),v=new DataView(b.buffer,b.byteOffset,b.byteLength);
+    pr.g=GP.map(d=>d.def); for(let i=0;i<32;i++)pr.g[i]=v.getInt16(8+2*i,true);
+    pr.sel=b[72];pr.g[32]=b[73];pr.g[45]=b[76];pr.fx_mask=b[77]&3;
+    pr.g[37]=b[74]&15;pr.g[42]=(b[74]>>4)&1;pr.g[43]=(b[74]>>5)&1;pr.g[41]=b[75];
+    pr.g[38]=pr.g[24]&127;pr.g[39]=((pr.g[24]>>7)&127)-64;pr.g[40]=pr.g[15];
+    pr.tracks.forEach((t,k)=>{
+      const at=80+900*k;t.engine=b[at+98];t.preset=b[at+99];
+      for(let i=0;i<81;i++)t.p[i]=v.getInt8(at+i);for(let i=0;i<8;i++)t.p[81+i]=v.getInt16(at+82+2*i,true);
+      for(let i=0;i<64;i++){const q=at+100+10*i;t.step[i]={notes:Array.from(b.slice(q,q+4)),n:b[q+4],time:b[q+5],flags:b[q+6],vel:b[q+7],lvl:b[q+8],rat:b[q+9]};
+        if(k===3){const d=emptyDrum();d.on=v.getUint16(q,true);for(let l=0;l<16;l++){d.lvl[l]=(b[q+2+(l>>2)]>>(2*(l&3)))&3;d.rat[l]=(b[q+6+(l>>2)]>>(2*(l&3)))&3;}t.dstep[i]=d;}
+        const mf=b[at+740+i];t.micro[i]=(mf&63)>=32?(mf&63)-64:mf&63;fillSet(t.fill,i,mf>>6);
+      }
+      t.locks=[];for(let i=0;i<24;i++){const q=at+804+4*i;if(b[q]!==255)t.locks.push({step:b[q],param:b[q+1],value:v.getInt16(q+2,true)});}
+    });return pr;
+  }
+
   /* v10: a factory synthesised kit (DSYN_MOCK_KITS), SYN1..4 = copies of 808, 909, TRAP, TECHNO */
   const dsynRaw = b64dec(DSYN_MOCK_KITS);
   function dsynFactory(i) {
@@ -2516,7 +2674,7 @@ function makeMockDevice(opt = {}) {
         b(0);
         break;
       case CMD.INFO:
-        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : opt.v3 ? "FELUCCA 0.8 (MOCK)" : "FELUCCA SLOOP 2.6 (MOCK)"); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
+        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : opt.v3 ? "FELUCCA 0.8 (MOCK)" : (opt.synth ? "SLOOP SYNTH 2.6 (MOCK)" : "FELUCCA SLOOP 2.6 (MOCK)")); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
         ENG.forEach((e) => s(e.name));
         if (!opt.legacy) b(NTRK);
         if (v5) b(opt.noBackup ? 5 : opt.v7 ? 7 : opt.v8 ? 8 : opt.v9 ? 9 : 10);   /* v10: SYN kits (v9: FM6 patches, v8: fill conditions, v7: nudges and locks, v6: backup) */
@@ -2731,7 +2889,7 @@ function makeMockDevice(opt = {}) {
         if (opt.noBackup) return null;
         const enc = (o) => Uint8Array.from(Array.from(JSON.stringify(o), (c) => c.charCodeAt(0) & 0x7F));
         const bankOf = (h) => { const x = st.bank.slice(h * 16, h * 16 + 16); return x.some(Boolean) ? enc(x) : new Uint8Array(0); };
-        st.bkSnap = new Map([[0, enc(project())], [1, st.settings.slice()], ...[0, 1, 2, 3].map((k) => [2 + k, st.slots[k] ? enc(st.slots[k]) : new Uint8Array(0)]),
+        st.bkSnap = new Map([[0, projectBytes(project())], [1, st.settings.slice()], ...[0, 1, 2, 3].map((k) => [2 + k, st.slots[k] ? projectBytes(st.slots[k]) : new Uint8Array(0)]),
           [6, bankOf(0)], [7, bankOf(1)], ...(v9 ? [[8, st.fm6bank.some(Boolean) ? FM6.bankObj(st.fm6bank) : new Uint8Array(0)]] : []),
           ...(v10 ? [[9, DSYN.bankEncode(dsynKits())]] : []),
           ...(v10 && st.ml && !mlDefault(st.ml) ? [[10, st.ml.slice()]] : []),   /* MIDI LEARN (2.6): only when not the
@@ -2773,8 +2931,8 @@ function makeMockDevice(opt = {}) {
               if (st.playing && P.buf.subarray(ARR.OFF, ARR.OFF + ARR.SIZE).some((v, k) => v !== st.settings[ARR.OFF + k])) { rc = 3; }
               else st.settings = P.buf.slice();
             }
-            else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
-            else if (id <= 5) st.slots[id - 2] = P.len ? js() : null;
+            else if (id === 0) { if(st.playing)rc=3;else{const o = projectFromBytes(P.buf); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; st.fx_mask=o.fx_mask||0;} }
+            else if (id <= 5) {if(st.playing)rc=3;else st.slots[id - 2] = P.len ? projectFromBytes(P.buf) : null;}
             else if (id === 10) {                           /* the MIDI part (2.6; editor.c: stopped only): the LEARN
                                                                map (16 x 2 bytes), then GLO > MIDI's channels (4 bytes) */
               if (P.len !== 32 && P.len !== 36 && P.len !== 40) throw 0;
@@ -3695,6 +3853,8 @@ const TEXT = {
     midiHowDrum: "GM ドラムの音（36 キック、38 スネア、42 ハット…）がドラムのレーンに、強さが ghost〜hard のレベルに入ります。",
     midiSetLen: "トラックの長さを {n} ステップにする", midiImport: "読み込む",
     midiConfirm: "このトラックのパターンを置き換えます。よろしいですか？", midiDone: "読み込みました。音の数: ", midiBad: "MIDI ファイルを読めません: ",
+    sectionFX: "セクションのエフェクト", sectionFXHelp: "オフのエフェクトは前のセクションから引き継ぎます。停止中に保存してください。",
+    sectionReverb: "セクションのリバーブ", sectionDelay: "セクションのディレイ", sectionType: "リバーブタイプ",
     tabSong: "ソング", songTitle: "ソング",
     songHelp: "FM-1 の SONG 画面と同じもの: セクション A〜D（4 つのプロジェクトスロット）を並べ、それぞれ何小節鳴らすか。全部で 16 項目まで。PLAY はソングモード（SAVE + 13）で。",
     songSection: "セクション", songBars: "小節", songTimes: "回数",
@@ -3895,6 +4055,8 @@ const TEXT = {
     midiHowDrum: "GM drum notes (36 kick, 38 snare, 42 hat…) go to the drum lanes, velocity to the levels ghost to hard.",
     midiSetLen: "Set the track's length to {n} steps", midiImport: "Import",
     midiConfirm: "This replaces the track's pattern. Go on?", midiDone: "Imported. Notes: ", midiBad: "Not a readable MIDI file: ",
+    sectionFX: "Section effects", sectionFXHelp: "Unchecked groups inherit the current FX from the previous section. Save while stopped.",
+    sectionReverb: "Use section reverb", sectionDelay: "Use section delay", sectionType: "Reverb type",
     tabSong: "Song", songTitle: "Song",
     songHelp: "The FM-1's SONG screen: the sections A–D (the four project slots) in order, each for so many bars. 16 entries at most. PLAY it in song mode (SAVE + key 13).",
     songSection: "Section", songBars: "Bars", songTimes: "Times",
@@ -4027,19 +4189,20 @@ const stepEdit = new Map(); /* index -> time of the last edit */
 
 /* parameter ids (firmware/src/core.h); used only when P_COUNT / G_COUNT match */
 /* pcount 71 / pe0 63: 2.6's INSERT, filter TYPE, ENV SYNC, LFO 2 (P_ITYPE 53 .. P_LPOL 62, after Felucca 1.4 / 1.5) */
-const EXPECT = { pcount: [61, 71], gcount: [32, 33, 45], pe0: [53, 63] };   /* gcount 33: 2.5's drum DLY (G_DRDLY); 45: 2.6's GLO > MIDI, TEXTURE, BEND */
+const EXPECT = { pcount: [61, 71, 89], gcount: [32, 33, 45, 46], pe0: [53, 63, 81] };   /* gcount 33: 2.5's drum DLY (G_DRDLY); 45: 2.6's GLO > MIDI, TEXTURE, BEND */
 const P = { LEVEL: 0, SLEN: 29, CHORD: 49 };
 const LAYOUT = (pe0) => {
-  const v251 = pe0 >= 63;                         /* (2.6: the pages the device has for the new parameters) */
+  const v251 = pe0 >= 63, synth = pe0 >= 81;                         /* (2.6: the pages the device has for the new parameters) */
   const opt = (yes, ...pages) => (yes ? pages : []);
   return [
     { t: "ENV", pages: [["ENV", 0, [1, 2, 3, 4]], ["ENV DEST", 0, [5, 6, 7, 8]], ...opt(v251, ["ENV SYNC", 0, [59]])] },
-    { t: "LFO", pages: [["LFO", 0, [9, 10, 11, 12]], ...opt(v251, ["LFO 2", 0, [60, 61, 62]]), ["LFO DEST", 0, [13, 14, 15, 16]]] },
+    { t: "LFO", pages: [["LFO", 0, [9, 10, 11, 12]], ...opt(v251, [synth ? "LFO SYNC" : "LFO 2", 0, [60, 61, 62]], ...opt(synth, ["LFO 2", 0, [75, 76, 77, 78]])), ["LFO DEST", 0, [13, 14, 15, 16]]] },
     { t: "EDIT", engine: true, pages: [["EDIT 1", 0, [pe0, pe0 + 1, pe0 + 2, pe0 + 3]], ["EDIT 2", 0, [pe0 + 4, pe0 + 5, pe0 + 6, pe0 + 7]],
       ...opt(v251, ["FILTER", 0, [58], 0])] },     /* (4th: the engine it is shown with: ANALOG's filter TYPE) */
     { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]]] },
-    { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["FILTER", 0, [50]], ["SLICER", 0, [45, 46, 47, 48]],
-      ...opt(v251, ["INSERT", 0, [53, 54, 55, 56]], ["INSERT 2", 0, [57]]), ["DLY", 1, [4, 5, 6, 7]], ["REV/CHO", 1, [8, 9, 10, 11]]] },
+    { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["FILTER", 0, synth ? [50, 79, 80] : [50]], ["SLICER", 0, [45, 46, 47, 48]],
+      ...opt(v251, ["INSERT", 0, [53, 54, 55, 56]], ["INSERT 2", 0, [57]]), ["DLY", 1, [4, 5, 6, 7]], ["REV/CHO", 1, [8, 9, 10, 11]], ...opt(synth, ["REVERB", 1, [45, 8, 9]])] },
+    ...opt(synth, { t: "MOD", pages: Array.from({ length: 4 }, (_, k) => ["MOD " + (k + 1), 0, [63 + 3*k, 64 + 3*k, 65 + 3*k]]) }),
     { t: "SEL", pages: [["SEL", 0, [25, 26, 27, 49]], ["SEL 2", 0, [28, 51, 52]]] },
     { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },
     { t: "SEQ PATTERN", tab: "seqgroups", pages: [["PATTERN", 0, [29, 30, 31, 32]]] },
@@ -4072,7 +4235,7 @@ async function connect() {
   sayK("connecting");
   try {
     if (!access) {
-      if (MOCK) { mock = makeMockDevice({ legacy: QS.get("legacy") === "1" }); access = mock.access; }
+      if (MOCK) { mock = makeMockDevice({ legacy: QS.get("legacy") === "1", synth: QS.get("legacy") !== "1" }); access = mock.access; }
       else {
         try { access = await navigator.requestMIDIAccess({ sysex: true }); }
         catch (e) { sayK("denied"); return; }
@@ -5185,7 +5348,7 @@ $("dsfile").addEventListener("change", async (e) => {
 });
 
 /* ---- SLOOP 2.5: the Song page: the order of the sections A..D (the device's SONG screen, from the browser) ---- */
-const SG = { rows: null, loop: false, bytes: null, err: "", dirty: false };
+const SG = { rows: null, loop: false, bytes: null, err: "", dirty: false, sections: new Map(), fxDirty: new Set() };
 async function readSong() {
   if (!dev || !(dev.info.proto >= 6)) { Object.assign(SG, { rows: null, err: "songOld" }); renderSong(); return; }
   const L = parse[CMD.BK_LIST](await rq(req.bkList(), { timeout: 5000, retries: 0 }));
@@ -5199,6 +5362,13 @@ async function readSong() {
     data.set(g.data, off);
   }
   if (!ARR.ok(data)) { Object.assign(SG, { rows: null, err: "songOld" }); renderSong(); return; }
+  SG.sections = new Map(); SG.fxDirty = new Set();
+  if (dev.info.pe0 >= 81) {
+    for (const item of L.items.filter(x => x.id >= 2 && x.id <= 5 && x.len)) {
+      const raw = await readBackupObject(rq, item);
+      if (SYNTH_PROJECT.valid(raw)) SG.sections.set(item.id - 2, raw);
+    }
+  }
   const song = ARR.decode(data);
   Object.assign(SG, { bytes: data, rows: ARR.group(song.entries), loop: song.loop, err: "", dirty: false });
   renderSong();
@@ -5207,6 +5377,7 @@ async function sendSong() {
   if (!dev || !SG.rows) return;
   const song = { loop: SG.loop, entries: ARR.expand(SG.rows) };
   if (!ARR.valid(song)) { sayK("songBad"); return; }
+  for (const scene of SG.fxDirty) await writeBackupObject(rq, scene + 2, SG.sections.get(scene));
   const d = ARR.encode(SG.bytes, song);
   let r = parse[CMD.BK_PUT](await rq(req.bkBegin(1, d.length, crc32(d)), { timeout: 1500, retries: 1 }));
   if (r.rc) throw new Error(`song: begin rc ${r.rc}`);
@@ -5222,7 +5393,28 @@ async function sendSong() {
 }
 const songCount = () => (SG.rows || []).reduce((a, r) => a + Math.max(1, r.times | 0), 0);
 function songEdit(fn) { fn(); SG.dirty = true; renderSong(); }
+function renderSongFX() {
+  const root = $("songfx"); root.replaceChildren();
+  if (!dev || dev.info.pe0 < 81 || !SG.sections.size) return;
+  root.append(el("h3", { text: t("sectionFX") }), el("p", { class: "dim", text: t("sectionFXHelp") }));
+  for (const [scene, bytes] of SG.sections) {
+    const f = SYNTH_PROJECT.fx(bytes), box = el("details", {}, el("summary", { text: t("songSection") + " " + "ABCD"[scene] }));
+    const change = (key, value) => { SG.sections.set(scene, SYNTH_PROJECT.withFX(SG.sections.get(scene), {[key]:value})); SG.fxDirty.add(scene); SG.dirty=true; $("songsend").classList.add("pri"); };
+    const flag = (key, label) => el("label", {}, el("input", {type:"checkbox",checked:f[key],onchange:e=>change(key,e.target.checked)})," "+label);
+    box.append(el("p",{class:"bar"},flag("reverbOverride",t("sectionReverb")),flag("delayOverride",t("sectionDelay"))));
+    const row = el("div", {class:"bar"});
+    for (const [key,id] of [["rtype",45],["size",8],["damp",9],["time",4],["feedback",5],["color",6],["mix",7]]) {
+      const d=dev.gdesc[id], label=el("label",{},(key==="rtype"?t("sectionType"):d.label)+" ");
+      let input;
+      if(d.names&&d.names.length){input=el("select",{onchange:e=>change(key,+e.target.value)},...d.names.map((x,i)=>el("option",{value:i,text:x})));input.value=String(f[key]);}
+      else input=el("input",{type:"number",min:d.min,max:d.max,value:f[key],style:"width:5em",onchange:e=>{const value=Math.max(d.min,Math.min(d.max,Math.round(+e.target.value)||0));e.target.value=value;change(key,value);}});
+      label.append(input);row.append(label);
+    }
+    box.append(row);root.append(box);
+  }
+}
 function renderSong() {
+  renderSongFX();
   const box = $("songrows");
   if (!dev || !dev.dump) return;
   $("songerr").hidden = !SG.err;

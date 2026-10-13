@@ -61,3 +61,10 @@ for twelve seconds, checks bounded tails and HALL stereo, exercises FREEZE and
 repeated model switches, and checks shorter even bus blocks. `song_ui_test.c`
 checks page navigation, edits, stopped-only guards and framebuffer bounds.
 Real FM-1 `audio_max_us` and listening tests remain hardware measurements.
+
+The web editor also exposes these settings under Song > Section effects. Its
+FUN7 editor validates the internal checksum, changes only the FX bytes, and
+recomputes that checksum before sending the section. Synth backups are refused
+before any write when the connected firmware can only read FUN6 or earlier.
+The synth browser mock uses the actual compact project layout; the legacy mock
+remains available to test older firmware behavior.
