@@ -125,22 +125,25 @@ static void phase_note_on(track_t *t, voice_t *v)
 
 static void phase_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t w1 = (uint32_t)p[P_E0] & 7u, w2 = (uint32_t)p[P_E1], i;
     int32_t depth = (p[P_E2] << 8) + m->cutoff + mulq15(m->envq15, p[P_E3] * 256);
-    uint32_t dcw, inc = m->inc, inc2;
+    uint32_t dcw, inc = m->inc, inc2 = 0;
     int32_t det = p[P_E4], line2 = det != 0 || p[P_E5], ring = p[P_E5], sub = p[P_E6] * 200;
-    int32_t d16 = det * 16 / 100, rem = det * 16 - d16 * 100;
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
     int32_t tg0 = v->s[0], tg1 = v->s[1];                    /* WAVE / WAVE2 toggles */
     pd_t b1, b2;
     depth = clamp(depth + (m->shape - (64 << 8)), 0, 127 << 8);
     dcw = (uint32_t)depth * 65535u / (127u << 8);
     dcw = (dcw * 56000u) >> 16;                              /* the classic range of the bend */
-    inc2 = pitch_inc(clamp(m->pitch16 + d16, 0, 2047));
-    inc2 += (uint32_t)((int32_t)(inc2 >> 12) * (rem * 2367 / 16000));
+    if (line2) {                                        /* no detuned oscillator: skip its pitch work */
+        int32_t d16 = det * 16 / 100, rem = det * 16 - d16 * 100;
+        inc2 = pitch_inc(clamp(m->pitch16 + d16, 0, 2047));
+        inc2 += (uint32_t)((int32_t)(inc2 >> 12) * (rem * 2367 / 16000));
+    }
     pd_setup(&b1, w1, dcw);
-    pd_setup(&b2, w2 ? w2 - 1u : w1, dcw);                   /* WAVE2 (every other cycle) */
+    if (w2) pd_setup(&b2, w2 - 1u, dcw);                 /* WAVE2 (every other cycle) */
+    else b2 = b1;                                      /* OFF repeats the same shape */
     for (i = 0; i < n; i++) {
         uint32_t old = ph0;
         int32_t s;
