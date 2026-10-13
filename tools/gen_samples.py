@@ -378,6 +378,7 @@ class Builder:
             L.append('    {"NONE", 0, 1},')
         L.append("};")
         L.append(f"#define SMP_NSETS {max(1, len(sets))}")
+        L.append(f"#define SMP_SAMPLES_LITE {int(sample_profile() == 'lite')}")
         L.append("static const preset_t SMP_PRESET_TABLE[] = {")
         named = sets or [("NONE", 0, 0)]
 
@@ -387,7 +388,9 @@ class Builder:
             x = ", ".join(f"{more[j]} + 1, {more[j + 1]}" for j in range(0, len(more), 2))
             return (f'    {{"{pname}", {{{", ".join(map(str, e))}}}, {{{", ".join(map(str, env))}}}, 0, {mono}, '
                     f'FX({", ".join(map(str, fx))}){", .x = {" + x + "}" if x else ""}}},')
-        for i, (name, _, _) in enumerate(named):
+        for i, (name, _, nz) in enumerate(named):
+            if not nz and sets:
+                continue
             k = self.kinds.get(name, "wave")
             if name in SET_PRESETS:
                 L.append(preset(i, k, *SET_PRESETS[name]))
@@ -395,7 +398,7 @@ class Builder:
                 a, d, s_, r = ENV[k]
                 L.append(f'    {{"{name}", {{{i}, 0, 0, {0 if k == "kit" else 1}, 127, 0, 0, 0}}, {{{a}, {d}, {s_}, {r}}}, 0, 0}},')
         for setname, *rest in EXTRA_PRESETS:
-            i = next((j for j, (n, _, _) in enumerate(named) if n == setname), None)
+            i = next((j for j, (n, _, nz) in enumerate(named) if n == setname and nz), None)
             if i is not None:
                 L.append(preset(i, self.kinds.get(setname, "wave"), *rest))
         L.append("};")
@@ -426,13 +429,20 @@ class Builder:
         return f"samples: {len(self.sets)} sets, {len(self.zones)} zones, {len(self.blob)} B ADPCM{brk}"
 
 
+def sample_profile():
+    profile = os.environ.get("FELUCCA_SAMPLES", "full")
+    if profile not in ("full", "lite"):
+        raise SystemExit("FELUCCA_SAMPLES must be full or lite")
+    return profile
+
+
 def input_key(have_cc0):
     """hash of everything the header depends on"""
     h = hashlib.sha256()
     here = Path(__file__).resolve().parent
     for p in (here / "gen_samples.py", here / "sampleio.py"):
         h.update(p.read_bytes())
-    h.update(repr((sys.version_info[:2], have_cc0, os.environ.get("FELUCCA_SLICE") == "1")).encode())   # sum() differs across versions
+    h.update(repr((sys.version_info[:2], have_cc0, os.environ.get("FELUCCA_SLICE") == "1", sample_profile())).encode())   # sum() differs across versions
     files = sorted(GENDIR.glob("*.wav"))
     if have_cc0:
         files += sorted(CC0.glob("*/*.wav"))
@@ -460,7 +470,12 @@ def main(out):
     if have_cc0:
         for name, kind in CC0_SETS:
             if kind != "kit":                       # the CC0 KIT feeds the GM kit
-                b.cc0_set(name, kind)
+                if sample_profile() == "lite" and name in ("SCRCH", "FLUTE"):
+                    # Keep set ids stable in projects and user presets; empty sets play silence.
+                    b.sets.append((name, len(b.zones), 0))
+                    b.kinds[name] = kind
+                else:
+                    b.cc0_set(name, kind)
     b.gm_kit(have_cc0)
     if os.environ.get("FELUCCA_SLICE") == "1":       # SLICE's BREAK: only when that engine is built
         b.slice_break()                             # last: the sets' offsets stay as they were

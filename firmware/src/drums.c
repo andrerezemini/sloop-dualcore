@@ -40,7 +40,11 @@ static struct {
     volatile uint16_t hits;      /* bit per lane hit since the UI last looked (pads, key LEDs) */
     volatile uint8_t kick;       /* a kick was hit (fx.c DUCK) */
     int32_t a0, a1;              /* the drum track's mute / solo attenuation over this block (fx.c), Q15, 0 = heard */
-} drums = {.set = -2};
+} drums
+#if !FELUCCA_BOOT_BSS
+    = {.set = -2}
+#endif
+;
 
 static int32_t ds_buf[CTL];
 

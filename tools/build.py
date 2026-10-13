@@ -13,6 +13,7 @@ macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
 """
 import argparse
 import hashlib
+import json
 import os
 import platform
 import re
@@ -49,6 +50,40 @@ SDK_SHA256 = {
 
 PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/ui.c)
+
+
+def option(name, default="1"):
+    value = os.environ.get(name, default)
+    if value not in ("0", "1"):
+        raise SystemExit(f"{name} must be 0 or 1")
+    return value == "1"
+
+
+def symbol_report(syms, image_bytes):
+    """Machine-readable sections and symbols; aliases are listed, never summed twice."""
+    rows = []
+    for line in syms.splitlines():
+        m = re.match(r"^([0-9a-f]+)\s+(.+?)\s+(\.[A-Za-z0-9_]+)\s+([0-9a-f]+)\s+(.+)$", line)
+        if not m:
+            continue
+        address, _, section, size, name = m.groups()
+        if int(size, 16):
+            rows.append(dict(name=name, address=int(address, 16), size=int(size, 16), section=section))
+    rows.sort(key=lambda r: (-r["size"], r["name"]))
+    values = {}
+    for line in syms.splitlines():
+        m = re.match(r"^([0-9a-f]+) .*\s(_(?:data|bss|lr|pool)_(?:start|end))$", line)
+        if m: values[m[2]] = int(m[1], 16)
+    report = {"image_bytes": image_bytes, "app_slot": APP_SLOT, "headroom": APP_SLOT - image_bytes,
+              "profile": os.environ.get("FELUCCA_SAMPLES", "full"),
+              "options": {k: option(k, d) for k, d in (("FELUCCA_COLD", "1"), ("FELUCCA_BOOT_BSS", "1"),
+                          ("FELUCCA_ASSET_LZ4", "1"), ("FELUCCA_FPU_PROBE", "0"))},
+              "sections": {k: values.get(f"_{k}_end", 0) - values.get(f"_{k}_start", 0)
+                           for k in ("data", "bss", "lr", "pool")}, "symbols": rows}
+    (OUT / "flash-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    (OUT / "flash-symbols.tsv").write_text("bytes\tsection\taddress\tsymbol\n" +
+        "".join(f"{r['size']}\t{r['section']}\t{r['address']:08x}\t{r['name']}\n" for r in rows))
+    return report
 
 
 def toolchain():
@@ -179,6 +214,9 @@ def build_app():
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
+    for flag, default in (("FELUCCA_COLD", "1"), ("FELUCCA_BOOT_BSS", "1"),
+                          ("FELUCCA_ASSET_LZ4", "1"), ("FELUCCA_FPU_PROBE", "0")):
+        flags.append(f"-D{flag}={int(option(flag, default))}")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
@@ -187,9 +225,15 @@ def build_app():
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
            ("cc", "-c", FW / "hal" / "fm1_cpu1.S", "-o", OUT / "fm1_cpu1.o"),
            ("cc", *flags, "-c", FW / "src" / "felucca.c", "-o", OUT / "felucca.o"))
+    extra = []
+    if option("FELUCCA_FPU_PROBE", "0"):
+        tc("cc", *CFLAGS, "-mcpu=r3", "-mfprev1", "-ffp-contract=off", "-Ifirmware/hal",
+           "-c", FW / "hal" / "fm1_fpu_probe.c", "-o", OUT / "fpu_probe.o")
+        library = "/opt/jieli/pi32v2/lib/r3/libm.a" if use_docker() else str(toolchain() / "pi32v2/lib/r3/libm.a")
+        extra = [OUT / "fpu_probe.o", library]
     elf = OUT / "felucca.elf"
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
-       OUT / "fm1_cpu1.o", OUT / "felucca.o", "-o", elf)
+       OUT / "fm1_cpu1.o", OUT / "felucca.o", *extra, "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -245,7 +289,7 @@ def check(img, syms, dis, rt):
             if 0xFFC00000 <= val < 0xFFD00000:
                 errors.append(f"reference to ROM address {val:#010x}")
     if len(img) > APP_SLOT:
-        errors.append(f"image {len(img)} B exceeds the app slot")
+        errors.append(f"image {len(img)} B exceeds the {APP_SLOT} B app slot; use FELUCCA_SAMPLES=lite")
 
     def sym(name):
         mm = re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M)
@@ -330,6 +374,7 @@ def main():
         gen.result()
         ota = ldr.result()
     img, syms, dis, rt = build_app()
+    symbol_report(syms, len(img))
     errors, notes = check(img, syms, dis, rt)
     hal_err = mmio_check()
     errors += hal_err

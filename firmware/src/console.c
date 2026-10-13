@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "cold.h"
 /* Serial console on the CDC-ACM function (FELUCCA_CDC=1): read-only
  * diagnostics. Runs in the main loop (cdc_task); usb_poll moves the bytes.
  * The baud rate is ignored. Nothing here writes memory or flash; `uboot`
@@ -258,16 +259,82 @@ static void con_params(void)
     }
 }
 
-static void con_exec(const char *p)
+#if FELUCCA_FPU_PROBE
+#include "fm1_fpu_probe.h"
+static void con_fpu(void)
+{
+    static const char *const op[] = {"mul_ticks", "div_ticks", "sqrtf_ticks", "sinf_ticks"};
+    uint32_t irq, core, k, reference, got, seen, saved[8];
+    int preserved;
+    int available;
+    if (song.playing || voices_busy()) {
+        con_puts("fpu: stop playback and release notes first\r\n");
+        return;
+    }
+    /* Reserve core 1 while its normal owner (the audio IRQ) cannot submit a job. */
+    irq = irq_save();
+    fpu_probe_bench(0);
+    available = cpu1_run(fpu_probe_bench, 1);
+    if (available && cpu1_wait() != 0) available = 0;
+    reference = fpu_probe_sequence();
+    memcpy(saved, fpu_probe_sequence_bits, sizeof saved);
+    irq_restore(irq);
+    fpu_probe_irq_count = 0;
+    fpu_probe_irq_active = 1;
+    got = fpu_probe_sequence();
+    fpu_probe_irq_active = 0;
+    seen = fpu_probe_irq_count;
+    preserved = memcmp(saved, fpu_probe_sequence_bits, sizeof saved) == 0;
+    con_kv("fpu_iterations", FPU_PROBE_COUNT);
+    con_kv("fpu_ticks_per_us", FM1_TICKS_PER_US);
+    for (core = 0; core < (available ? 2u : 1u); core++) {
+        con_kv("fpu_core", core);
+        for (k = 0; k < 4u; k++) {
+            con_kv(op[k], fpu_probe_result[core].ticks[k]);
+            con_kx("result_bits", fpu_probe_result[core].bits[k]);
+        }
+    }
+    con_kv("fpu_cpu1_available", available);
+    if (available) {
+        int equal = 1;
+        for (k = 0; k < 4u; k++)
+            if (fpu_probe_result[0].bits[k] != fpu_probe_result[1].bits[k]) equal = 0;
+        con_kv("fpu_cores_equal", equal);
+    }
+    con_kv("fpu_irq_count", seen);
+    con_kx("fpu_irq_reference", reference);
+    con_kx("fpu_irq_result", got);
+    /* -1 means inconclusive (no interrupt observed), never a false pass. */
+    con_kv("fpu_irq_preserved", seen ? preserved : -1);
+}
+#endif
+
+static void FELUCCA_COLD_FN con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
-        con_puts("status  dbg  crash  params  memr ADDR [LEN]  flr OFF [LEN]  cpu1 units MASK|auto  uboot yes\r\n");
+        con_puts("status  dbg  crash  params  midi  fpu  memr ADDR [LEN]  flr OFF [LEN]  cpu1 units MASK|auto  uboot yes\r\n");
     else if (con_word(&p, "status"))
         con_status();
     else if (con_word(&p, "dbg"))
         con_dbg();
     else if (con_word(&p, "crash"))
         con_crash();
+    else if (con_word(&p, "midi")) {
+        uint32_t i;
+        for (i = 0; i < NPART; i++) {
+            con_kv("track", i + 1u);
+            con_kv("mw", trk[i].mw);
+            con_kv("at", trk[i].at);
+            con_kv("ex_off", trk[i].ex_off);
+        }
+    }
+    else if (con_word(&p, "fpu")) {
+#if FELUCCA_FPU_PROBE
+        con_fpu();
+#else
+        con_puts("rebuild with FELUCCA_FPU_PROBE=1\r\n");
+#endif
+    }
     else if (con_word(&p, "params"))
         con_params();
     else if (con_word(&p, "memr"))

@@ -1,0 +1,376 @@
+{
+  "scope": "S0 isolated on ram 9843161; not the final S1-S8 image",
+  "original_image_bytes": 576944,
+  "profiles": {
+    "none": {
+      "image_bytes": 577020,
+      "app_slot": 581564,
+      "headroom": 4544,
+      "profile": "full",
+      "options": {
+        "FELUCCA_COLD": false,
+        "FELUCCA_BOOT_BSS": false,
+        "FELUCCA_ASSET_LZ4": false,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 2912,
+        "bss": 55308,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "cold": {
+      "image_bytes": 574924,
+      "app_slot": 581564,
+      "headroom": 6640,
+      "profile": "full",
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": false,
+        "FELUCCA_ASSET_LZ4": false,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 2912,
+        "bss": 55308,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "bss": {
+      "image_bytes": 574012,
+      "app_slot": 581564,
+      "headroom": 7552,
+      "profile": "full",
+      "options": {
+        "FELUCCA_COLD": false,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": false,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 112,
+        "bss": 58108,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "assets": {
+      "image_bytes": 574988,
+      "app_slot": 581564,
+      "headroom": 6576,
+      "profile": "full",
+      "options": {
+        "FELUCCA_COLD": false,
+        "FELUCCA_BOOT_BSS": false,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 2912,
+        "bss": 55308,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "all": {
+      "image_bytes": 570028,
+      "app_slot": 581564,
+      "headroom": 11536,
+      "profile": "full",
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 112,
+        "bss": 58108,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "lite": {
+      "image_bytes": 515500,
+      "app_slot": 581564,
+      "headroom": 66064,
+      "profile": "lite",
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": false
+      },
+      "sections": {
+        "data": 112,
+        "bss": 58108,
+        "lr": 22772,
+        "pool": 333900
+      }
+    },
+    "fpu": {
+      "image_bytes": 520188,
+      "app_slot": 581564,
+      "headroom": 61376,
+      "profile": "lite",
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": true
+      },
+      "sections": {
+        "data": 120,
+        "bss": 58216,
+        "lr": 22772,
+        "pool": 333900
+      }
+    }
+  },
+  "largest_flash_symbols": [
+    {
+      "name": "SMP_DATA",
+      "address": 33762408,
+      "size": 303054,
+      "section": ".text"
+    },
+    {
+      "name": "ui_draw",
+      "address": 33673426,
+      "size": 32956,
+      "section": ".text"
+    },
+    {
+      "name": "ui_input",
+      "address": 33651392,
+      "size": 14574,
+      "section": ".text"
+    },
+    {
+      "name": "ed_handle",
+      "address": 33631890,
+      "size": 11756,
+      "section": ".text"
+    },
+    {
+      "name": "DS_KITS",
+      "address": 34080380,
+      "size": 11648,
+      "section": ".text"
+    },
+    {
+      "name": "mix_block",
+      "address": 33597948,
+      "size": 10818,
+      "section": ".text"
+    },
+    {
+      "name": "events_block",
+      "address": 33576070,
+      "size": 9354,
+      "section": ".text"
+    },
+    {
+      "name": "fm1_main",
+      "address": 33706446,
+      "size": 8360,
+      "section": ".text"
+    },
+    {
+      "name": "FONT_S_DATA",
+      "address": 34096900,
+      "size": 5376,
+      "section": ".text"
+    },
+    {
+      "name": "SLOOP_SPLASH_RLE",
+      "address": 34102472,
+      "size": 4635,
+      "section": ".text"
+    },
+    {
+      "name": "FM6_EXP2",
+      "address": 34071312,
+      "size": 4100,
+      "section": ".text"
+    },
+    {
+      "name": "usb_poll",
+      "address": 33611572,
+      "size": 3108,
+      "section": ".text"
+    },
+    {
+      "name": "drums_mix",
+      "address": 33592014,
+      "size": 3106,
+      "section": ".text"
+    },
+    {
+      "name": "ICON_DATA",
+      "address": 34112752,
+      "size": 3096,
+      "section": ".text"
+    },
+    {
+      "name": "mix_part_run",
+      "address": 33589550,
+      "size": 2464,
+      "section": ".text"
+    },
+    {
+      "name": "grain_render",
+      "address": 33731886,
+      "size": 2136,
+      "section": ".text"
+    },
+    {
+      "name": "SINE",
+      "address": 33755512,
+      "size": 2050,
+      "section": ".text"
+    },
+    {
+      "name": "UAC_FIR",
+      "address": 34093586,
+      "size": 1920,
+      "section": ".text"
+    },
+    {
+      "name": "formant_render",
+      "address": 33724858,
+      "size": 1896,
+      "section": ".text"
+    },
+    {
+      "name": "analog_render",
+      "address": 33717808,
+      "size": 1856,
+      "section": ".text"
+    }
+  ],
+  "largest_ram_symbols": [
+    {
+      "name": "dly_buf",
+      "address": 29557656,
+      "size": 131072,
+      "section": ".pool"
+    },
+    {
+      "name": "punch_ring",
+      "address": 29690722,
+      "size": 65536,
+      "section": ".pool"
+    },
+    {
+      "name": "cv_px",
+      "address": 29756258,
+      "size": 59520,
+      "section": ".pool"
+    },
+    {
+      "name": "sl_buf",
+      "address": 29520792,
+      "size": 32768,
+      "section": ".pool"
+    },
+    {
+      "name": "eng_arena",
+      "address": 29491200,
+      "size": 25776,
+      "section": ".pool"
+    },
+    {
+      "name": "rev_line",
+      "address": 29368556,
+      "size": 17368,
+      "section": ".lowram"
+    },
+    {
+      "name": "trk",
+      "address": 29399908,
+      "size": 8448,
+      "section": ".bss"
+    },
+    {
+      "name": "abuf",
+      "address": 29395812,
+      "size": 4096,
+      "section": ".bss"
+    },
+    {
+      "name": "cho_buf",
+      "address": 29553560,
+      "size": 4096,
+      "section": ".pool"
+    },
+    {
+      "name": "ins",
+      "address": 29419140,
+      "size": 4060,
+      "section": ".bss"
+    },
+    {
+      "name": "main_scratch",
+      "address": 29426924,
+      "size": 3840,
+      "section": ".bss"
+    },
+    {
+      "name": "proj_tmp",
+      "address": 29430764,
+      "size": 3840,
+      "section": ".bss"
+    },
+    {
+      "name": "autosave_buf",
+      "address": 29815780,
+      "size": 3816,
+      "section": ".pool"
+    },
+    {
+      "name": "song_keep",
+      "address": 29516976,
+      "size": 3816,
+      "section": ".pool"
+    },
+    {
+      "name": "vis_sg",
+      "address": 29819596,
+      "size": 3456,
+      "section": ".pool"
+    },
+    {
+      "name": "proj_v3_tmp",
+      "address": 29434604,
+      "size": 2584,
+      "section": ".bss"
+    },
+    {
+      "name": "cdc_out",
+      "address": 29424180,
+      "size": 2048,
+      "section": ".bss"
+    },
+    {
+      "name": "ua_ring",
+      "address": 29408356,
+      "size": 2048,
+      "section": ".bss"
+    },
+    {
+      "name": "rev_ap",
+      "address": 29688728,
+      "size": 1994,
+      "section": ".pool"
+    },
+    {
+      "name": "drums",
+      "address": 29392900,
+      "size": 1820,
+      "section": ".data"
+    }
+  ]
+}

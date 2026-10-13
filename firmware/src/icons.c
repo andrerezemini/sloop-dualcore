@@ -16,6 +16,9 @@
 #define ICON_GAP 2                        /* px between the icon and the label */
 
 #if FELUCCA_ICONS
+#if ICON_LZ4
+#include "asset_lz4.h"
+#endif
 typedef struct {
     const char *label;
     uint8_t icon;
@@ -143,7 +146,13 @@ static void cv_icon(int32_t x, int32_t y, uint32_t id, uint16_t c)
         return;
     for (a = 0; a < 4u; a++)
         ramp[a] = (uint16_t)(((r * a / 3u) << 11) | ((g * a / 3u) << 5) | (b * a / 3u));
+#if ICON_LZ4
+    uint8_t decoded[ICON_BYTES];
+    if (!asset_lz4(ICON_PACKED + ICON_OFF[id], ICON_OFF[id + 1u] - ICON_OFF[id], decoded, sizeof decoded)) return;
+    p = decoded;
+#else
     p = ICON_DATA[id];
+#endif
     for (j = 0; j < ICON_CELL; j++)
         for (i = 0; i < ICON_CELL; i++) {
             uint32_t k = j * ICON_CELL + i, v = (p[k >> 2] >> (6u - 2u * (k & 3u))) & 3u;

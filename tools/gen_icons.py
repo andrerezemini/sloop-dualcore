@@ -17,6 +17,8 @@ high bits (12 x 12 -> 36 B), plus the enum ICON_<NAME> and FELUCCA_ICONS_N (the 
 drawn icons; 0 when the PNG, the JSON or Pillow is missing, so the firmware builds without).
 """
 import json
+import os
+import lz4blk
 import re
 import sys
 from pathlib import Path
@@ -77,12 +79,30 @@ def main(out, assets=ASSETS):
     if n:
         bpi = (cell * cell + 3) // 4
         lines.append(f"#define ICON_BYTES {bpi}")
+        compressed = os.environ.get("FELUCCA_ASSET_LZ4", "1") != "0"
+        lines.append(f"#define ICON_LZ4 {int(compressed)}")
+        blobs = []
         lines.append(f"static const uint8_t ICON_DATA[{n}][{bpi}] = {{")
         for name, px in zip(names, cells):
             px = px + [0] * (-len(px) % 4)
             b = [(px[i] << 6) | (px[i + 1] << 4) | (px[i + 2] << 2) | px[i + 3] for i in range(0, len(px), 4)]
+            blobs.append(bytes(b))
             lines.append("    {" + ", ".join(f"0x{v:02x}" for v in b) + f"}},   /* {name} */")
         lines.append("};")
+        if compressed:
+            start = next(i for i, line in enumerate(lines) if line.startswith("static const uint8_t ICON_DATA"))
+            del lines[start:]
+            packed, offsets = bytearray(), [0]
+            for b in blobs:
+                c = lz4blk.compress(b)
+                assert lz4blk.decompress(c) == b
+                packed += c
+                offsets.append(len(packed))
+            lines.append("static const uint16_t ICON_OFF[] = {" + ",".join(map(str, offsets)) + "};")
+            lines.append("static const uint8_t ICON_PACKED[] = {")
+            for i in range(0, len(packed), 24):
+                lines.append("    " + ",".join(map(str, packed[i:i + 24])) + ",")
+            lines.append("};")
     Path(out).write_text("\n".join(lines) + "\n")
     print(f"icons: {n} of {len(names)} ({note}), {n * ((cell * cell + 3) // 4)} B")
 

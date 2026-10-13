@@ -2,15 +2,25 @@
 /* SLOOP boot splash: the logo (tools/gen_logo.py -> sloop_logo.h: 16 colours, RLE runs of
  * (run - 1) << 4 | colour), drawn into the canvas in bands of at most 120 rows. */
 #include "sloop_logo.h"
+#if SLOOP_SPLASH_LZ4
+#include "asset_lz4.h"
+#endif
 static void sloop_logo_draw(uint32_t y0)
 {
     uint32_t r0;
+#if SLOOP_SPLASH_LZ4
+    uint8_t decoded[SLOOP_SPLASH_BYTES];
+    const uint8_t *rle = decoded;
+    if (!asset_lz4(SLOOP_SPLASH_RLE, sizeof SLOOP_SPLASH_RLE, decoded, sizeof decoded)) return;
+#else
+    const uint8_t *rle = SLOOP_SPLASH_RLE;
+#endif
     for (r0 = 0; r0 < SLOOP_SPLASH_H; r0 += 120u) {
         uint32_t rows = SLOOP_SPLASH_H - r0 > 120u ? 120u : SLOOP_SPLASH_H - r0;
         uint32_t lo = r0 * SLOOP_SPLASH_W, hi = (r0 + rows) * SLOOP_SPLASH_W, pos = 0, i;
         cv_begin(SLOOP_SPLASH_W, rows, C_BLACK);
-        for (i = 0; i < sizeof SLOOP_SPLASH_RLE && pos < hi; i++) {
-            uint32_t run = (SLOOP_SPLASH_RLE[i] >> 4) + 1u, c = SLOOP_SPLASH_RLE[i] & 15u, p;
+        for (i = 0; i < SLOOP_SPLASH_BYTES && pos < hi; i++) {
+            uint32_t run = (rle[i] >> 4) + 1u, c = rle[i] & 15u, p;
             if (c && pos + run > lo)
                 for (p = pos < lo ? lo : pos; p < pos + run && p < hi; p++)
                     cv_px[p - lo] = swap16(SLOOP_SPLASH_PAL[c]);

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+"""Build profiles retain sample IDs; compressed UI assets reproduce every byte."""
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def generate(tool, dest, **flags):
+    subprocess.run(["python3", str(ROOT / "tools" / tool), str(dest)],
+                   env={**os.environ, **flags}, check=True, capture_output=True)
+    return dest.read_text()
+
+def array(text, name):
+    body = re.search(r"\b" + name + r"\[[^;=]*\]\s*=\s*\{(.*?)\};", text, re.S)[1]
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    return bytes(int(v, 0) for v in re.findall(r"0x[\da-fA-F]+|\d+", body))
+
+with tempfile.TemporaryDirectory(prefix="sloop-s0-") as td:
+    tmp = Path(td)
+    full = generate("gen_samples.py", tmp / "full.h", FELUCCA_SAMPLES="full")
+    lite = generate("gen_samples.py", tmp / "lite.h", FELUCCA_SAMPLES="lite")
+    def sets(text):
+        table = re.search(r"SMP_SETS\[\].*?=\s*\{(.*?)\};", text, re.S)[1]
+        return [(n, int(z), int(c)) for n, z, c in re.findall(r'\{"([^"]+)", (\d+), (\d+)\}', table)]
+    fs, ls = sets(full), sets(lite)
+    assert [s[0] for s in fs] == [s[0] for s in ls]
+    assert len(array(full, "SMP_DATA")) - len(array(lite, "SMP_DATA")) == 54284
+    for (name, _, count), (_, _, reduced) in zip(fs, ls):
+        assert reduced == (0 if name in ("FLUTE", "SCRCH") else count)
+    for name in ("LOFI FLUTE", "SCRATCH"):
+        assert f'"{name}"' in full and f'"{name}"' not in lite
+    assert '"GM KIT"' in lite
+    invalid = subprocess.run(["python3", str(ROOT / "tools/gen_samples.py"), str(tmp / "bad.h")],
+                            env={**os.environ, "FELUCCA_SAMPLES": "invalid"}, capture_output=True)
+    assert invalid.returncode != 0
+    cases = []
+    for tool, name in (("gen_logo.py", "SLOOP_SPLASH_RLE"), ("gen_icons.py", "ICON_DATA")):
+        raw = generate(tool, tmp / "raw.h", FELUCCA_ASSET_LZ4="0")
+        packed = generate(tool, tmp / "packed.h", FELUCCA_ASSET_LZ4="1")
+        if tool == "gen_logo.py":
+            cases.append((array(raw, name), array(packed, name)))
+        else:
+            blob = array(packed, "ICON_PACKED")
+            offsets = [int(x) for x in re.search(r"ICON_OFF\[\] = \{(.*?)\}", packed)[1].split(",")]
+            source = array(raw, name)
+            for i, (a, b) in enumerate(zip(offsets, offsets[1:])):
+                cases.append((source[i * 36:(i + 1) * 36], blob[a:b]))
+    lines = ['#include <stdint.h>', '#include <string.h>', '#include <assert.h>',
+             f'#include "{ROOT}/firmware/src/asset_lz4.h"', 'int main(void) {']
+    for i, (raw, packed) in enumerate(cases):
+        lines += [f'{{ uint8_t dst[{len(raw)}];',
+                  'const uint8_t raw[] = {' + ','.join(map(str, raw)) + '};',
+                  'const uint8_t packed[] = {' + ','.join(map(str, packed)) + '};',
+                  'assert(asset_lz4(packed, sizeof packed, dst, sizeof dst));',
+                  'assert(!memcmp(raw, dst, sizeof raw));',
+                  'for (uint32_t n = 0; n < sizeof packed; n++) assert(!asset_lz4(packed, n, dst, sizeof dst));',
+                  'assert(!asset_lz4(packed, sizeof packed, dst, sizeof dst - 1)); }']
+    lines += ['return 0; }']
+    (tmp / 'test.c').write_text('\n'.join(lines))
+    subprocess.run(['cc', '-std=c11', '-fsanitize=address,undefined', str(tmp / 'test.c'), '-o', str(tmp / 'test')], check=True)
+    subprocess.run([str(tmp / 'test')], check=True)
+    print(f'S0: full/lite stable IDs, 54284 B saved, {len(cases)} asset blocks exact, truncated blocks rejected (ASan/UBSan)')
