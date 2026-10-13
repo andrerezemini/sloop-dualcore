@@ -10,7 +10,10 @@
 > status, how to build and install it: [DUALCORE.md](DUALCORE.md). The second, branch `ram`, on top of it: four
 > reductions inside the RAM region (the MIDI note table in nibbles, one scratch for the main loop's short-lived
 > buffers, the user preset banks read where they are in the flash, the DRAWBAR state in the engine arena), 58.2 KB
-> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md).
+> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md). Branch `synth` builds on `ram` with expressive
+> MIDI, four modulation slots, a second LFO, LP24, ROOM/SPRING/HALL, Wave Terrain, sixteen new presets
+> and section effects. Builds, compatibility, host verification and pending hardware checks:
+> [SYNTH.md](SYNTH.md).
 > Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
 > [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
 > Claude (the commits say so). GPL-3.0-only, as all of them.

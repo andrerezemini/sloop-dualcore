@@ -1,4 +1,32 @@
-# sloop-lab, branch `dualcore`: project memory
+# sloop-lab: project memory
+
+## Branch `synth` (13/10/2026)
+
+Current branch `synth` starts at `ram` (`9843161`). [SYNTH.md](SYNTH.md) describes
+the implemented synth series, formats, build profiles and acceptance status.
+The historical **Only the second core** restriction below applies to `dualcore`,
+not `synth`. The synth plan explicitly permits appended golden entries: retain
+all 182 original entries unchanged and append only the sixteen new presets.
+Do not blanket-refresh hashes or CPU baselines. Preserve neutral-default audio
+under every dual-core mode, and keep per-part rendering state independent.
+
+Build this feature set with `FELUCCA_SAMPLES=lite sh build.sh`; the default full
+sample library currently overflows the target slot. Full-sample host tests are
+still required, along with lite regression. Keep separately generated sample
+headers for each profile so a target build does not change a running host test.
+`sh tests/run_tests.sh` must pass, including the target budgets. The formerly
+stale IRQ and missing FM6 target budgets below were measured against `ram` and
+corrected; they are no longer accepted failures. The current synth build has
+not yet been validated on hardware. Source fingerprints, image sizes and
+checksums live in `docs/synth-build-manifest.json`.
+
+During audio rendering `render_p(t)` reads a per-part shadow or the original
+parameter array. UI code must read `t->p` directly, never an active render view.
+Project writes use FUN7; user-preset version 2 uses a 256-byte logical record
+packed to 160 bytes on flash. Keep all legacy readers and the existing A/B
+sector map. Attribution and notices travel with each port.
+
+## Historical dualcore / ram notes
 
 This checkout is a **thin fork** of [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1) (SLOOP, a
 groovebox firmware for the M-VAVE FM-1). Branch `dualcore` adds the FM-1's second processor core to
