@@ -79,6 +79,7 @@ static int phys_render_draws(const track_t *t, int32_t model)   /* model: the MO
 #if FELUCCA_SLICE
 #include "eng_slice.c"
 #endif
+#include "eng_terrain.c"        /* synth: Plaits' five analytic terrains in Q15 */
 
 static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &ENG_PHASE, &ENG_LOFI, &ENG_SAMPLE,
                                                     &ENG_FORMANT, &ENG_TRIO, &ENG_DRAWBAR,   /* 7: ENGI_DRAWBAR (eng_drawbar.c) */
@@ -88,14 +89,23 @@ static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &EN
 #if FELUCCA_SLICE
                                                     &ENG_SLICE,
 #endif
+                                                    &ENG_TERRAIN,
 };
 _Static_assert(ENGI_FM6 == 9u, "ENGINES[ENGI_FM6] is FM6");
 _Static_assert(ENGI_GRAIN == 8u && ENGI_PHYS == 10u && ENGI_NOISE == 11u && ENGI_SLICE == 12u, "ENGINES[] order");
+_Static_assert(ENGI_TERRAIN == 12u + FELUCCA_SLICE, "TERRAIN is appended after all existing engines");
 
 /* every factory sound as loud as the others: a level trim per preset, 1/2 dB, measured on a phrase
  * that fits the sound (tools/level_presets.py writes preset_trim.h); a track keeps it in P_ED_FX */
 #include "preset_trim.h"
 static int16_t preset_trim(uint32_t e, uint32_t pi)
 {
+#if SMP_SAMPLES_LITE
+    /* The full bank's level data stays immutable. Lite omits two SAMPLE
+     * patches and FLUTE DUST, so translate its compact browsing indices back
+     * to the original rows before looking up their measured gains. */
+    if (e == 4u && pi >= 5u) pi += 2u;
+    if (e == ENGI_GRAIN && pi >= 2u) pi++;
+#endif
     return e < PT_ENGINES && pi < PT_MAX ? PRESET_TRIM[e][pi] : 0;
 }
