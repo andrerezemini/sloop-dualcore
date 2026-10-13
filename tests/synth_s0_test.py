@@ -31,18 +31,21 @@ with tempfile.TemporaryDirectory(prefix="sloop-s0-") as td:
     assert len(array(full, "SMP_DATA")) - len(array(lite, "SMP_DATA")) == 54284
     for (name, _, count), (_, _, reduced) in zip(fs, ls):
         assert reduced == (0 if name in ("FLUTE", "SCRCH") else count)
-    for name in ("LOFI FLUTE", "SCRATCH"):
-        assert f'"{name}"' in full and f'"{name}"' not in lite
+    for name in ("LOFI FLUTE", "SCRATCH"):      # the presets stay in both tables: the stores' numbers are stable
+        assert f'"{name}"' in full and f'"{name}"' in lite
+    assert "#define SMP_SET_EMPTY 96u" in lite and "#define SMP_SET_EMPTY 0u" in full   # FLUTE 5, SCRCH 6 empty
     assert '"GM KIT"' in lite
     invalid = subprocess.run(["python3", str(ROOT / "tools/gen_samples.py"), str(tmp / "bad.h")],
                             env={**os.environ, "FELUCCA_SAMPLES": "invalid"}, capture_output=True)
     assert invalid.returncode != 0
     cases = []
-    for tool, name in (("gen_logo.py", "SLOOP_SPLASH_RLE"), ("gen_icons.py", "ICON_DATA")):
+    for tool, name in (("gen_logo.py", "SLOOP_SPLASH_RLE"), ("gen_icons.py", "ICON_DATA"), ("gen_font.py", "FONT_S_DATA")):
         raw = generate(tool, tmp / "raw.h", FELUCCA_ASSET_LZ4="0")
         packed = generate(tool, tmp / "packed.h", FELUCCA_ASSET_LZ4="1")
         if tool == "gen_logo.py":
             cases.append((array(raw, name), array(packed, name)))
+        elif tool == "gen_font.py":
+            cases.append((array(raw, name), array(packed, "FONT_S_PACKED")))
         else:
             blob = array(packed, "ICON_PACKED")
             offsets = [int(x) for x in re.search(r"ICON_OFF\[\] = \{(.*?)\}", packed)[1].split(",")]

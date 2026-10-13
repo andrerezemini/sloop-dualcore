@@ -172,7 +172,7 @@ _Static_assert(P_E0 == 81u && sizeof(proj_trk_t) == 900u && sizeof(project_t) ==
                __builtin_offsetof(proj_trk_t, step) == 100u && __builtin_offsetof(proj_trk_t, lock) == 804u,
                "FUN7 / web editor binary layout: bump format before changing");
 _Static_assert(sizeof(project_t) <= 3840u, "format 7 fits one flash object (storage.c ST_PAYLOAD_MAX)");
-static uint8_t section_fx_mask;                 /* working project: inherited FX unless explicitly enabled */
+/* section_fx_mask (core.h): working project, inherited FX unless explicitly enabled */
 project_t proj_slot[4] __attribute__((section(".noinit")));
 
 static uint32_t proj_hash(const void *p, uint32_t n)   /* FNV-1a over n bytes */
@@ -439,7 +439,7 @@ static int proj_from_v1(project_t *q, const project_v1_t *v1, int n)
 }
 
 /* n bytes of a stored project (any format) -> slot q as format 5; 0 = not a project */
-static int proj_import(project_t *q, const void *b, int n)
+static int FELUCCA_COLD_FN proj_import(project_t *q, const void *b, int n)
 {
     if (n == (int)sizeof *q && proj_ok((const project_t *)b)) {
         memcpy(q, b, sizeof *q);
@@ -539,7 +539,7 @@ static int proj_section_fx_adjust(project_t *p, uint32_t field, int32_t steps)
 /* a project's tracks (and its globals, all: a load; or only the drum level / reverb / delay: a song
  * section) into the working one, every value back inside its range. The audio ISR must not run
  * meanwhile (the song sections: called from it; a load: IRQ off) */
-static void proj_apply(const project_t *p, int all)
+static void FELUCCA_COLD_FN proj_apply(const project_t *p, int all)
 {
     uint32_t i, k;
     for (i = 0; i < PROJ_NG; i++)
@@ -608,6 +608,7 @@ static void proj_apply(const project_t *p, int all)
 
 #ifndef PROJ_HOST
 #if FELUCCA_ARRANGER
+#include "cold.h"
 #include "arranger_scene.c"
 #endif
 static uint8_t sec_dirty, song_dirty;           /* live sections / the song: in RAM, not yet in flash */
@@ -895,8 +896,15 @@ static void persist_boot(void)                    /* before settings_init / pane
             if (!proj_ok(&proj_slot[i])) {
                 proj_fetch(i);
             } else {
-                int n = st_load(OBJ_PROJECT0 + i, &proj_tmp, sizeof proj_tmp);
-                if (n != (int)sizeof proj_slot[i] || memcmp(&proj_tmp.v7, &proj_slot[i], sizeof proj_slot[i]))
+                int n = st_load(OBJ_PROJECT0 + i, &proj_tmp, sizeof proj_tmp), same;
+                same = n == (int)sizeof proj_slot[i] && !memcmp(&proj_tmp.v7, &proj_slot[i], sizeof proj_slot[i]);
+                if (!same && n > 0) {                   /* an older format in flash with the same content (a warm
+                                                         * reset after an update): left as it is, so the firmware
+                                                         * it came from still reads it; rewritten at the next SAVE */
+                    project_t *q = (project_t *)&main_scratch;   /* (boot: the main loop's scratch is free) */
+                    same = proj_import(q, &proj_tmp, n) && !memcmp(q, &proj_slot[i], sizeof *q);
+                }
+                if (!same)
                     sec_dirty |= (uint8_t)(1u << i);
             }
     }

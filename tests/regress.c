@@ -807,24 +807,27 @@ static job_t *add(uint32_t kind, const char *name)
     return j;
 }
 
-/* Keep full-profile render IDs when lite omits factory presets. The sample
- * set IDs and the audio of every retained preset must remain identical. */
-static uint32_t golden_preset_index(uint32_t e, uint32_t pi)
-{
-#if SMP_SAMPLES_LITE
-    if (e == 4u && pi >= 5u) return pi + 2u;
-    if (e == ENGI_GRAIN && pi >= 2u) return pi + 1u;
-#endif
-    return pi;
-}
+/* A build that leaves a sample set empty (FELUCCA_SAMPLES=lite) keeps that set's presets in the tables
+ * (engines.c preset_hidden: the numbers of every other preset, and so the golden names, are the same in
+ * every build) but cannot render them: their jobs are not made, and their lines in the files are not
+ * "gone" */
 static int golden_profile_omits(const char *name)
 {
-#if SMP_SAMPLES_LITE
-    return !strcmp(name,"preset/SAMPLE/05_LOFI_FLUTE") || !strcmp(name,"preset/SAMPLE/06_SCRATCH") ||
-           !strcmp(name,"preset/GRAIN/02_FLUTE_DUST");
-#else
-    (void)name; return 0;
-#endif
+    uint32_t e, pi;
+    char s[32], n[64];
+    for (e = 0; e < NENGINES; e++)
+        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+            if (!preset_hidden(e, pi))
+                continue;
+            slug(s, ENGINES[e]->presets[pi].name, sizeof s);
+            snprintf(n, sizeof n, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
+            if (!strcmp(n, name))
+                return 1;
+            snprintf(n, sizeof n, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
+            if (!strcmp(n, name))
+                return 1;
+        }
+    return 0;
 }
 int main(int argc, char **argv)
 {
@@ -853,8 +856,10 @@ int main(int argc, char **argv)
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
+            if (preset_hidden(e, pi))
+                continue;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
-            snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, golden_preset_index(e, pi), s);
+            snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
             j = add(J_PRESET, name);
             j->e = (uint8_t)e;
             j->pi = (uint8_t)pi;
@@ -909,8 +914,10 @@ int main(int argc, char **argv)
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
+            if (preset_hidden(e, pi))
+                continue;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
-            snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, golden_preset_index(e, pi), s);
+            snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
             j = add(J_CPU, name);
             memset(cpu_parts[ncpu], 0, sizeof cpu_parts[ncpu]);
             cpu_parts[ncpu][0][0] = (uint8_t)e;

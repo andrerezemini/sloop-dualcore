@@ -118,7 +118,7 @@ static const preset_t TERRAIN_PRESETS[] = {
      XP(P_M1SRC + 1, MS_MODW, P_M1DST + 1, MD_E1, P_M1AMT + 1, 30, P_GLIDE + 1, 32)},
     {"TOPO PLUCK", {82, 73, -26, -8, 2, 18, 14, 108}, {0, 66, 0, 52}, 20, 0, FX(0, 12, 30, 42)},
     {"ISLAND DRONE", {112, 104, -15, 18, 1, 80, 10, 88}, {90, 96, 120, 98}, 0, 0, FX(0, 48, 26, 74),
-     XP(P_M1SRC + 1, MS_LFO2, P_M1DST + 1, MD_E1 + 2, P_M1AMT + 1, 18, P_L2RATE + 1, 15), .rtype = 4},
+     XP(P_M1SRC + 1, MS_LFO2, P_M1DST + 1, MD_E1 + 2, P_M1AMT + 1, 18, P_L2RATE + 1, 15)},
 };
 static const engine_t ENG_TERRAIN = {
     "TERRAIN", {"TERRAIN", "ORBIT"},

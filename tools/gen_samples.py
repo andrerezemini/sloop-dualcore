@@ -379,6 +379,8 @@ class Builder:
         L.append("};")
         L.append(f"#define SMP_NSETS {max(1, len(sets))}")
         L.append(f"#define SMP_SAMPLES_LITE {int(sample_profile() == 'lite')}")
+        L.append(f"#define SMP_SET_EMPTY {sum(1 << i for i, (_, _, nz) in enumerate(sets) if not nz)}u"
+                 "   /* the sets this build left empty: their presets stay in the tables (the stores' numbers), hidden */")
         L.append("static const preset_t SMP_PRESET_TABLE[] = {")
         named = sets or [("NONE", 0, 0)]
 
@@ -389,8 +391,6 @@ class Builder:
             return (f'    {{"{pname}", {{{", ".join(map(str, e))}}}, {{{", ".join(map(str, env))}}}, 0, {mono}, '
                     f'FX({", ".join(map(str, fx))}){", .x = {" + x + "}" if x else ""}}},')
         for i, (name, _, nz) in enumerate(named):
-            if not nz and sets:
-                continue
             k = self.kinds.get(name, "wave")
             if name in SET_PRESETS:
                 L.append(preset(i, k, *SET_PRESETS[name]))
@@ -398,7 +398,7 @@ class Builder:
                 a, d, s_, r = ENV[k]
                 L.append(f'    {{"{name}", {{{i}, 0, 0, {0 if k == "kit" else 1}, 127, 0, 0, 0}}, {{{a}, {d}, {s_}, {r}}}, 0, 0}},')
         for setname, *rest in EXTRA_PRESETS:
-            i = next((j for j, (n, _, nz) in enumerate(named) if n == setname and nz), None)
+            i = next((j for j, (n, _, nz) in enumerate(named) if n == setname), None)
             if i is not None:
                 L.append(preset(i, self.kinds.get(setname, "wave"), *rest))
         L.append("};")
@@ -472,7 +472,7 @@ def main(out):
             if kind != "kit":                       # the CC0 KIT feeds the GM kit
                 if sample_profile() == "lite" and name in ("SCRCH", "FLUTE"):
                     # Keep set ids stable in projects and user presets; empty sets play silence.
-                    b.sets.append((name, len(b.zones), 0))
+                    b.sets.append((name, 0, 0))   # (z0 0: a valid zone index, never one past the table)
                     b.kinds[name] = kind
                 else:
                     b.cc0_set(name, kind)

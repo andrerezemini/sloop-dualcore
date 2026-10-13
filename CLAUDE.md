@@ -10,10 +10,15 @@ all 182 original entries unchanged and append only the sixteen new presets.
 Do not blanket-refresh hashes or CPU baselines. Preserve neutral-default audio
 under every dual-core mode, and keep per-part rendering state independent.
 
-Build this feature set with `FELUCCA_SAMPLES=lite sh build.sh`; the default full
-sample library currently overflows the target slot. Full-sample host tests are
-still required, along with lite regression. Keep separately generated sample
-headers for each profile so a target build does not change a running host test.
+Build this feature set with `FELUCCA_SAMPLES=lite sh build.sh` (526,964 B, 54,600
+free). Since 13/10 the default full sample library links again, with 232 bytes to
+spare (the screen font is an LZ4 block unpacked into RAM, `gfx.c font_unpack`): do
+not count on it surviving an upstream merge. `tests/run_tests.sh` renders the
+goldens for both profiles and compares the two boot-initialization hashes. Keep
+separately generated sample headers for each profile so a target build does not
+change a running host test. Lite keeps every factory preset in the tables and
+hides those of its empty sets (`engines.c preset_hidden`): preset numbers in
+projects mean the same in both builds.
 `sh tests/run_tests.sh` must pass, including the target budgets. The formerly
 stale IRQ and missing FM6 target budgets below were measured against `ram` and
 corrected; they are no longer accepted failures. The current synth build has
@@ -130,8 +135,9 @@ sh build.sh --release 2.5                           # identity FM-1_925 (upstrea
 ```
 
 `sh build.sh`, not `./build.sh`: the files carry no execute bit. On macOS every toolchain call runs in a
-`linux/amd64` Debian container; on Linux x86-64 it runs natively. The JieLi toolchain ships no libc or libm:
-the firmware brings its own `libc.c`. SLOOP's generators run on Apple's Python; X0X's need Pillow with raqm.
+`linux/amd64` Debian container; on Linux x86-64 it runs natively. The JieLi toolchain does ship newlib 2.2.0
+(`pi32v2/lib/r3/libm.a` is FPU-built; `firmware/hal/fm1_fpu_probe.c` links it), but the firmware links none of
+it and brings its own `libc.c`. SLOOP's generators run on Apple's Python; X0X's need Pillow with raqm.
 
 ## Testing
 
@@ -192,7 +198,8 @@ small), and `cpu_pct` lower than with MENU > SYSTEM > 2ND CORE OFF on the same p
 the sound does not change). `cpu1 units MASK` in the console changes the split finer (0 = everything on core 0,
 `cpu1 units auto` = the firmware's share). Rescue: hold OCT- while switching on, then install again. The package
 keeps identity FM-1_900, so the official 2.6 installs back over it (2.5 too, but a project saved by 2.6 does not open
-in 2.5: upstream's note). A device that ran the 2.5-based build with 2ND CORE **OFF** saved that in bit 21, which 2.6
+in 2.5: upstream's note). **On `synth`: a slot or user-preset bank saved by synth (FUN7, preset version 2) reads as
+empty on 2.6: back up with the web editor before installing synth and before going back.** A device that ran the 2.5-based build with 2ND CORE **OFF** saved that in bit 21, which 2.6
 reads as GLO > MIDI 2 > IN = CH 1: set IN back to NOTES once, and 2ND CORE as wanted (now bit 26).
 
 ## What the device alone can tell

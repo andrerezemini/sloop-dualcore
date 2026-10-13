@@ -149,7 +149,6 @@ typedef struct {
     uint8_t pat;                 /* sequence pattern (PATTERNS[pat - 1]), loaded only into an empty sequencer */
     int8_t x[8];                 /* more of the patch: up to 4 (track parameter id + 1, value) pairs, 0 = none
                                   * (glide, pitch / LFO modulation, voice mode...: preset_extras) */
-    uint8_t rtype;               /* 0 keep bus type, else G_RTYPE + 1 (fills old padding) */
 } preset_t;
 #define FX(d, c, dl, r) .fx = {(d) + 1, (c) + 1, (dl) + 1, (r) + 1}
 #define ARP(m, rt, o, g) .arp = {(m) + 1, (rt) + 1, (o) + 1, (g) + 1}
@@ -327,6 +326,7 @@ typedef struct {
 
 static track_t trk[NTRK];        /* the instrument: three parts and the drum track */
 static song_t song;
+static uint8_t section_fx_mask;      /* synth: the working project's section FX flags (project.c; ui_input.c project_new zeroes it) */
 static const int16_t *render_p(const track_t *t) { return t->rp ? t->rp : t->p; }
 
 

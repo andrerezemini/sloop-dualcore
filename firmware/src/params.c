@@ -158,7 +158,6 @@ static const param_desc_t TP[P_COUNT] = {
 static void preset_extras(int16_t *p, const preset_t *pr)
 {
     uint32_t i;
-    if (pr->rtype) song.g[G_RTYPE] = (int16_t)clamp(pr->rtype-1,0,3);
     for (i = 0; i + 1u < 8u; i += 2u) {
         int32_t id = pr->x[i] - 1;
         if (id >= 0 && id < P_E0)

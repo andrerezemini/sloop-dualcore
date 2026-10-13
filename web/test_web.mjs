@@ -1481,7 +1481,7 @@ async function editorSynth() {
   await rq(E.req.preset(0,22));let d=E.parse[C.DUMP](await rq(E.req.dump()),info);
   ok(d.p[58]===3&&d.p[63]===3&&d.p[64]===2&&d.p[65]===20,"synth: expressive factory preset loads ladder and velocity matrix");
   await rq(E.req.preset(12,7));d=E.parse[C.DUMP](await rq(E.req.dump()),info);
-  ok(d.p[63]===11&&d.p[75]===15&&d.g[45]===3,"synth: terrain drone loads independent LFO2 and HALL recommendation");
+  ok(d.p[63]===11&&d.p[75]===15&&d.g[45]===0,"synth: terrain drone loads independent LFO2 and leaves the reverb type alone (13/10: no preset changes the bus)");
   await rq(E.req.project(1,0));
   let arc=await E.backupCapture(rq,info), objects=E.backupObjects(arc), raw=objects.get(2);
   ok(E.SYNTH_PROJECT.valid(raw)&&raw.length===3684&&E.bkDevFormat(info)===7,"synth: backup emits checked compact FUN7 project");

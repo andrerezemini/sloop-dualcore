@@ -18,9 +18,17 @@ This follows the economical nonlinear four-pole idea of Surge's legacy
 [LPMOOGquad](https://github.com/surge-synthesizer/sst-filters/blob/main/include/sst/filters/QuadFilterUnit_Impl.h).
 It is **not** a verbatim port: the legacy implementation has five states and
 explicit delayed feedback; this four-state implementation solves the linear
-loop to stay stable at high cutoff without oversampling. RES 127 maps to the
-nominal k=4 self-oscillation endpoint, with a 1% fixed-point loss compensation
-(internal feedback 4.04). The tanh bounds the oscillation.
+loop to stay stable at high cutoff without oversampling. RES 127 maps to a
+feedback of 4.5 (`LADDER_K127`), above the ideal ladder's 4: the fixed-point
+losses at a low cutoff eat the loop gain, and 4.04 oscillated only above 130 Hz.
+The tanh bounds the oscillation at about −19 dBFS from 49 Hz up. Every product
+is rounded to nearest, half away from zero (a loop of floors leans one way:
+the states rested a few Q23 units below zero and the output never returned to
+0), and when there is no input and all four stages are below 16 LSB they walk
+to exactly 0. A retrigger or a stolen voice keeps the four stages, as the SVF's
+two (zeroing them thumped on fast mono lines). The ladder returns Q23;
+`ladder_q15` rounds it for a voice, `ladder_bus` scales a track bus by 32 in
+and 8 out, so the track path keeps its resolution and ±2^20 of headroom.
 
 LP/BP/HP keep their original arithmetic. LP24 is appended as ANALOG TYPE 3;
 track TYPE 1 selects the ladder only on the low-pass side. The track resonance
@@ -29,10 +37,15 @@ is an offset over the original 40, so zero retains the original filter.
 Host acceptance (`tests/synth_dsp_test.c`, also run with UBSan):
 
 - Impulse response at cutoff index 70: **−24.06 dB/octave** from 3,820 to 7,640 Hz.
-- Ten seconds at RES 127, cutoff 80, after one impulse: peak **1,617**, final
-  second RMS **1,143** Q15 units, bounded and still oscillating.
-- Zero state/input remains exactly zero; all 128 cutoff positions and the
-  resonance endpoints tolerate full-scale alternating input without overflow.
+- Ten seconds at RES 127, cutoff 80, after one impulse: bounded and still
+  oscillating (peak 5,258, final-second RMS 3,716 Q15 units).
+- Self-oscillation at RES 127 stays between −30 and −12 dBFS at every cutoff
+  from index 10 (49 Hz) to 127 (it was dead below index 30 at 4.04).
+- After a full-scale bipolar burst the output and all four stages are exactly
+  0 within a second, at cutoff 0, 40, 80 and 127, with RES 0 and 100.
+- All 128 cutoff positions and the resonance endpoints tolerate full-scale
+  alternating input without overflow; the Terrain reference check is also
+  relative (error 26 dB under the signal).
 
 ## Terrain
 
@@ -65,8 +78,10 @@ host test; the firmware contains no float calculation for the engine.
 ANALOG's original indices 0–21 are preserved. Indices 22–29 append LADDER ACID,
 WHEEL LEAD, AFTER BRASS, SLEW PAD, EXPR KEYS, RAND PLUCK, DUAL ORBIT and HALL SWELL.
 They demonstrate velocity, modulation wheel, aftertouch, expression, note
-randomness, slew and LFO 2. SLEW PAD, HALL SWELL and TERRAIN's ISLAND DRONE request
-the HALL global reverb when selected; older presets retain the current type.
+randomness, slew and LFO 2. No preset changes the global reverb type (an earlier
+draft had SLEW PAD, HALL SWELL and ISLAND DRONE switch the bus to HALL: a part's
+sound must not change what the other parts and the drums hear); try them with
+GLO > REVERB > TYPE HALL.
 
 `tools/level_synth_presets.py` uses the existing `level_presets.py` BS.1770
 measurement and its phrase roles/target, but updates only the sixteen appended

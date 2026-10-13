@@ -85,10 +85,12 @@ static int up_encode(up_wire_t *out, const up_rec_t *r)
     memset(out, 0, sizeof *out);
     if (!r || !r->used) return 0;
     if (r->np > UP_PMAX) return 1;
-    for (i = 0; i < r->np; i++) if (r->p[i] < -128 || r->p[i] > 127) return 1;
     memcpy(out, r, 16);
     out->ver = UP_VER;
-    for (i = 0; i < r->np; i++) out->p[i] = (int8_t)r->p[i];
+    for (i = 0; i < r->np; i++)                     /* every parameter fits a byte (project_test.c asserts the ranges);
+                                                     * a value outside (a record a client wrote unclamped) is clamped,
+                                                     * never refused: a refusal would leave the whole bank unsaveable */
+        out->p[i] = (int8_t)(r->p[i] < -128 ? -128 : r->p[i] > 127 ? 127 : r->p[i]);
     memcpy(out->note, r->note, 32);
     return 0;
 }

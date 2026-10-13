@@ -90,6 +90,7 @@ static void terrain_test(void)
         printf("terrain preset %d float render: RMS %.6f, peak %.6f\n",preset,sqrt(ee/(FS/CTL*CTL)),peak);
         CHECK(sqrt(rr/(FS/CTL*CTL))>.005);
         CHECK(sqrt(ee/(FS/CTL*CTL))<.005);CHECK(peak<.015);
+        CHECK(sqrt(ee)<sqrt(rr)*.05);                   /* and relative: an error 26 dB under the signal, however quiet */
     }
     /* Render extreme controls and modulation, including the highest MIDI note
      * and 8:1 orbit, so fixed-point bounds cover more than the factory bank. */
@@ -110,7 +111,7 @@ static double impulse_gain(double hz)
     double re=0,im=0;
     /* Small-signal impulse. Remove the integer tail's DC contribution. */
     enum{N=16384};int32_t impulse[N];
-    for(int i=0;i<N;i++)impulse[i]=ladder_run(&s,&c,i==0?16000:0);
+    for(int i=0;i<N;i++)impulse[i]=ladder_q15(&s,&c,i==0?16000:0);
     for(int i=0;i<N;i++) {
         double v=impulse[i]-impulse[N-1],p=2*M_PI*hz*i/FS;
         re+=v*cos(p);im-=v*sin(p);
@@ -123,7 +124,7 @@ static void ladder_test(void)
     ladder_coef(&c,80<<8,127);
     double e=0;int peak=0;
     for(int i=0;i<FS*10;i++) {
-        int y=ladder_run(&s,&c,i==0?8000:0);
+        int y=ladder_q15(&s,&c,i==0?8000:0);
         if(abs(y)>peak)peak=abs(y);
         if(i>=9*FS)e+=(double)y*y;
         for(int j=0;j<4;j++)CHECK(abs(s.s[j])<=16777216);
@@ -131,13 +132,13 @@ static void ladder_test(void)
     printf("ladder 10 s k=4: peak %d, last-second RMS %.1f\n",peak,sqrt(e/FS));
     CHECK(peak<32768);CHECK(sqrt(e/FS)>200);CHECK(sqrt(e/FS)<5000);
     memset(&s,0,sizeof s);
-    for(int i=0;i<FS;i++)CHECK(ladder_run(&s,&c,0)==0);
+    for(int i=0;i<FS;i++)CHECK(ladder_q15(&s,&c,0)==0);
     /* Every parameter corner with full-scale alternating impulses: under the
      * sanitizer, any signed overflow/division/invalid shift aborts this test. */
     for(int cut=0;cut<=127;cut++)for(int res=0;res<=127;res+=127) {
         memset(&s,0,sizeof s);ladder_coef(&c,cut<<8,res);
         for(int i=0;i<2048;i++) {
-            int y=ladder_run(&s,&c,(i&1)?32767:-32768);
+            int y=ladder_q15(&s,&c,(i&1)?32767:-32768);
             CHECK(y>=-32768&&y<=32767);
         }
     }
@@ -145,6 +146,23 @@ static void ladder_test(void)
     double slope=20*log10(g2/g1);
     printf("ladder impulse octave %.0f..%.0f Hz: %.2f dB/oct\n",f*4,f*8,slope);
     CHECK(slope< -22.);CHECK(slope> -26.);
+    /* Self-oscillation at RES 127 holds a level from 49 Hz (cut 10) to the top: the feedback above 4
+     * (LADDER_K127) pays for the fixed-point losses at a low cutoff, where the stages' steps round away. */
+    for(int cut=10;cut<=127;cut+=cut<30?5:cut<100?10:27) {
+        memset(&s,0,sizeof s);ladder_coef(&c,cut<<8,127);double e2=0;
+        for(int i=0;i<FS*3;i++){int y=ladder_q15(&s,&c,i==0?8000:0);if(i>=2*FS)e2+=(double)y*y;}
+        double db=20*log10(sqrt(e2/FS)/32768+1e-12);
+        if(db<-30||db>-12)printf("ladder self-oscillation at cut %d: %.1f dBFS\n",cut,db);
+        CHECK(db>-30.);CHECK(db<-12.);
+    }
+    /* After a full-scale bipolar burst the output returns to exactly 0, and so do the stages (the deadband
+     * walks them down when a low cutoff's steps round to nothing), at every cutoff, with and without resonance. */
+    for(int res=0;res<=100;res+=100)for(int cut=0;cut<=127;cut+=cut<80?40:47) {
+        int nz=0;memset(&s,0,sizeof s);ladder_coef(&c,cut<<8,res);
+        for(int i=0;i<FS*4;i++){int y=ladder_q15(&s,&c,i<2000?((i&1)?30000:-30000):0);if(i>=FS*3&&y)nz++;}
+        if(nz||s.s[0]||s.s[1]||s.s[2]||s.s[3])printf("ladder burst cut %d res %d: %d nonzero, states %d %d %d %d\n",cut,res,nz,s.s[0],s.s[1],s.s[2],s.s[3]);
+        CHECK(!nz);CHECK(!s.s[0]&&!s.s[1]&&!s.s[2]&&!s.s[3]);
+    }
 }
 int main(void)
 {

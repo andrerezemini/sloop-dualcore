@@ -358,7 +358,7 @@ static void go_home(void)
 static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 3}};
 #else
 static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 5}};
-#endif   /* ANALOG 808 BOOM, DIGITAL RHODES, SAMPLE LOFI FLUTE */
+#endif   /* ANALOG 808 BOOM, DIGITAL RHODES, SAMPLE LOFI FLUTE (lite: HORN STAB, FLUTE's set being empty there) */
 static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? TRK_DEF[i][0] : 0u; }
 
 static int seq_is_empty(const track_t *t) { return track_empty(t); }
@@ -372,7 +372,8 @@ static void track_defaults_steps(track_t *t) { steps_clear(t); }
 static int param_kept(uint32_t i)
 {
     return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_SLEN && i <= P_SGATE) ||
-           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD || i == P_TFLT || i == P_STRUM || i == P_VLEAD;
+           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD || i == P_TFLT || i == P_TRES || i == P_TFTYPE ||
+           i == P_STRUM || i == P_VLEAD;
 }
 
 /* preset pi of the engine the track asked for: the whole sound (not the pattern parameters) */
@@ -481,14 +482,7 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_PAD, 5, "VOX PAD"}, {BK_PAD, 8, "PNO FREEZE"}, {BK_PAD, 8, "HORN CLOUD"}, {BK_PAD, 0, "SINE PAD"},
     {BK_PAD, 6, "PULSE PAD"}, {BK_LEAD, 0, "SUPERSAW"}, {BK_LEAD, 0, "G-FUNK LD"}, {BK_LEAD, 6, "SYNC LEAD"},
     {BK_LEAD, 6, "HOOVER"}, {BK_LEAD, 5, "TALKBOX"}, {BK_LEAD, 3, "GAME LEAD"},
-#if !SMP_SAMPLES_LITE
-    {BK_LEAD, 4, "LOFI FLUTE"},
-#endif
-
-
-#if !SMP_SAMPLES_LITE
-    {BK_LEAD, 8, "FLUTE DUST"},
-#endif
+    {BK_LEAD, 4, "LOFI FLUTE"}, {BK_LEAD, 8, "FLUTE DUST"},
     {BK_LEAD, 0, "FAT LEAD"}, {BK_LEAD, 0, "PAN FLUTE"}, {BK_LEAD, 5, "HARMONICA"},
     {BK_LEAD, ENGI_NOISE, "NZ ARCADE"}, {BK_LEAD, 3, "WAVE LEAD"}, {BK_LEAD, 2, "CZ LEAD"},
     {BK_LEAD, 5, "ROBOT"}, {BK_LEAD, 0, "PWM LEAD"}, {BK_LEAD, 6, "SQR LEAD"}, {BK_PLUCK, 0, "TRAP PLUCK"},
@@ -508,9 +502,7 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_STAB, 2, "CZ BRASS"}, {BK_STAB, 4, "HORN STAB"}, {BK_STAB, 4, "STRING STB"},
     {BK_STAB, ENGI_FM6, "BRASS SECT"}, {BK_STAB, 6, "80S POLY"}, {BK_STAB, 3, "CHIP CHORD"},
     {BK_STAB, 6, "POWER STAB"},
-#if !SMP_SAMPLES_LITE
     {BK_FX, 4, "SCRATCH"},
-#endif
     {BK_FX, 4, "GM KIT"}, {BK_FX, ENGI_PHYS, "HAND DRUM"},
     {BK_FX, ENGI_PHYS, "MEMB TOMS"}, {BK_FX, ENGI_NOISE, "RAIN"}, {BK_FX, ENGI_NOISE, "NZ METAL"},
     {BK_FX, ENGI_PHYS, "TABLA"}, {BK_FX, ENGI_PHYS, "CONGA"}, {BK_FX, ENGI_PHYS, "TIMPANI"},
@@ -540,16 +532,20 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
 };
 #define NBANK (sizeof BANK / sizeof BANK[0])
 static uint8_t bank_pi[NBANK];                       /* the preset index of each entry in its engine */
+static uint8_t bank_vis[NBANK], bank_nvis;           /* the entries offered, in order (preset_hidden: not those) */
 static uint8_t bank_ready;
 static void bank_resolve(void)
 {
     uint32_t i, k;
+    bank_nvis = 0;
     for (i = 0; i < NBANK; i++) {
         const engine_t *e = ENGINES[BANK[i].e % NENGINES];
         bank_pi[i] = 0xFF;
         for (k = 0; k < e->npresets; k++)
             if (str_eq(e->presets[k].name, BANK[i].name))
                 bank_pi[i] = (uint8_t)k;
+        if (bank_pi[i] != 0xFF && !preset_hidden(BANK[i].e % NENGINES, bank_pi[i]))
+            bank_vis[bank_nvis++] = (uint8_t)i;
     }
     bank_ready = 1;
 }
@@ -558,12 +554,12 @@ static uint32_t preset_pos(uint32_t *total)          /* list index of the select
     uint32_t i, cur = 0;
     if (!bank_ready)
         bank_resolve();
-    for (i = 0; i < NBANK; i++)
-        if (BANK[i].e == TSEL->eng_req && bank_pi[i] == TSEL->preset)
+    for (i = 0; i < bank_nvis; i++)
+        if (BANK[bank_vis[i]].e == TSEL->eng_req && bank_pi[bank_vis[i]] == TSEL->preset)
             cur = i;
     if (user_of(TSEL) < UP_SLOTS)
-        cur = NBANK + up_rank(user_of(TSEL));
-    *total = NBANK + up_count();
+        cur = bank_nvis + up_rank(user_of(TSEL));
+    *total = bank_nvis + up_count();
     return cur;
 }
 
@@ -572,14 +568,20 @@ static uint32_t preset_at(uint32_t n, uint32_t *k)
 {
     if (!bank_ready)
         bank_resolve();
-    if (n >= NBANK) {
-        *k = up_nth(n - NBANK);
+    if (n >= bank_nvis) {
+        *k = up_nth(n - bank_nvis);
         return NENGINES;
     }
+    n = bank_vis[n];
     *k = bank_pi[n] == 0xFF ? 0u : bank_pi[n];
     return BANK[n].e;
 }
-static const char *preset_kind(uint32_t n) { return n < NBANK ? BANK_KIND[BANK[n].kind] : "USER"; }
+static const char *preset_kind(uint32_t n)
+{
+    if (!bank_ready)
+        bank_resolve();
+    return n < bank_nvis ? BANK_KIND[BANK[bank_vis[n]].kind] : "USER";
+}
 
 /* list index n into track t (2.6: MIDI Program Change, any track); 0 done, 1 no such sound */
 static int preset_go_to(track_t *t, uint32_t n)
@@ -589,7 +591,7 @@ static int preset_go_to(track_t *t, uint32_t n)
         return 1;
     if (!bank_ready)
         bank_resolve();
-    total = NBANK + up_count();
+    total = bank_nvis + up_count();
     if (n >= total)
         return 1;
     e = preset_at(n, &k);

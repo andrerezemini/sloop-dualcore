@@ -47,7 +47,11 @@ sum exactly. Reports for these measurements are summarized in `docs/synth-s0-bud
 
 The firmware is one compilation unit. `cold.h` therefore uses clang's `minsize` function
 attribute, the size preference used by `-Oz`, on `ui_draw`, `ui_input`, `ed_handle`,
-`usb_poll` and `con_exec`. Audio functions retain the original `-Os` preference.
+`con_exec`, `fm1_main`, `fm1_cstart`, `proj_import`, `proj_apply`, `ota_session`,
+`layer_key` and `ed_service`: main-loop and boot code only. `usb_poll` runs in the
+2 kHz TIMER5 interrupt and is not in the set (13/10). Audio functions retain the
+original `-Os` preference. The attribute is worth little on this backend (about
+1 % of a function), so the seven entry points added on 13/10 save some 200 bytes.
 
 Boot initialization moves `drums`, both master limiter structures, DUST, TEXTURE and
 punch state to zero-initialized storage. Their few nonzero fields are installed after
@@ -57,8 +61,22 @@ Host builds preserve the old static initializers unless explicitly testing the n
 The logo's existing RLE bytes compress from 4,635 to 2,313 bytes; all 86 icons use individual
 LZ4 blocks (3,096 → 2,933 bytes including offsets). A shared bounded decoder writes to
 short-lived stack arrays: 4,635 bytes only during splash drawing and 36 bytes for an icon.
-No persistent RAM is reserved, and decoding is outside the audio interrupt. The drawing
-input bytes and pixels are unchanged.
+No persistent RAM is reserved for those, and decoding is outside the audio interrupt. The
+drawing input bytes and pixels are unchanged.
+
+The screen font's 1-bit bitmaps (`FONT_S_DATA`, 5,376 bytes, also the L font at 2x) are
+stored as one LZ4 block of **2,148 bytes** (`FONT_S_PACKED`, `tools/gen_font.py`, 13/10) and
+unpacked once into a RAM array of 5,376 bytes at boot (`gfx.c font_unpack`, called from
+`fm1_main` before the splash and by the first `cv_text`): 3,228 bytes of flash for 5,376 of
+RAM, which the `ram` branch had freed. `FELUCCA_ASSET_LZ4=0` keeps the font in flash as
+before. `tests/synth_s0_test.py` checks the block reproduces every byte, `tests/font_test.c`
+hashes the unpacked bitmaps.
+
+With the font block, the seven extra cold entry points and the corrections of 13/10 the
+**full sample profile links again: 581,332 bytes, 232 free** (the 1,368-byte overflow is
+gone, but there is no margin for an upstream release of any size: build `lite` for daily
+use); lite is 526,964 bytes with 54,600 free. RAM `.data + .bss` is 64,908 bytes (the font
+array), `.lowram` 23,280, the pool 333,636.
 
 ## FPU diagnostic
 

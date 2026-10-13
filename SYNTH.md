@@ -22,15 +22,18 @@ still pending. No synth image has been flashed as part of this implementation.
   TIME changes note length, not the transport grid.
 - **LFO 2:** independent RATE, WAVE, SYNC and PHS controls, selected as a matrix
   source. RATE 0 disables it. The former sync page is named LFO SYNC.
-- **LP24:** ANALOG TYPE adds a four-pole resonant ladder. The track FILTER has
-  CUTOFF, RES and TYPE; LP24 operates on its low-pass side. RES is an offset
-  over the old value 40; zero with SVF preserves the original result.
+- **LP24:** ANALOG TYPE adds a four-pole resonant ladder that self-oscillates
+  at RES 127 from 49 Hz up, returns to exact silence and keeps its stages on a
+  retrigger. The track FILTER has CUTOFF, RES and TYPE; LP24 operates on its
+  low-pass side. RES is an offset over the old value 40; zero with SVF preserves
+  the original result. A sound load keeps the track's RES and TYPE, as it keeps
+  its CUTOFF (the web editor agrees).
 - **Reverb:** GLO > REVERB > TYPE selects FDN, ROOM, SPRNG or stereo HALL.
   Model changes fade and clear shared state. The original FDN is still type 0.
 - **Sixteen sounds:** eight additional ANALOG presets and eight TERRAIN presets
   appear once each in BANK. Wheel, aftertouch, expression, both LFOs, the ladder
-  and HALL are demonstrated. SLEW PAD, HALL SWELL and ISLAND DRONE request HALL;
-  old presets retain the current reverb type.
+  and HALL are demonstrated. No preset changes the global reverb type: select
+  HALL under GLO > REVERB to hear SLEW PAD, HALL SWELL and ISLAND DRONE as meant.
 - **TERRAIN:** a Q15 adaptation of Plaits' five analytic surfaces. EDIT exposes
   TERR/RAD/X/Y and RATIO/ROT/DRV/CUT. The original twelve engine indices stay
   stable; TERRAIN is appended (after optional SLICE when that engine is enabled).
@@ -53,10 +56,13 @@ FELUCCA_SAMPLES=lite FELUCCA_FPU_PROBE=1 sh build.sh
 FELUCCA_SAMPLES=lite FELUCCA_CPU1=0 sh build.sh
 ```
 
-The sample profile remains `full` by default for compatibility with existing
-build workflows. The complete synth feature set currently needs `lite` to fit
-the application slot. Lite retains all eight set numbers but leaves FLUTE and
-SCRCH empty, and omits their three factory presets. Older projects using those
+The sample profile remains `full` by default. Since 13/10 the full profile
+links again (581,332 of 581,564 bytes: 232 free, so any upstream growth will
+push it over; `lite` is the build to carry). Lite keeps all eight set numbers
+but leaves FLUTE and SCRCH empty; their three factory presets (LOFI FLUTE,
+SCRATCH, FLUTE DUST) stay in the engines' tables, so every preset number means
+the same sound in both builds (projects and the web editor store numbers), and
+are hidden from BANK (`engines.c preset_hidden`). Older projects using those
 sets load with silent sample voices; all six retained sets are byte-identical.
 No user-sample sectors are repurposed.
 
@@ -75,10 +81,10 @@ development packages with the existing FM-1_900 identity, not public releases.
 | S0 lossless UI asset compression | 2,032 bytes saved in isolation |
 | Combined S0 optimizations | 6,992 bytes saved against S0 control |
 | Lite sample data reduction | 54,284 bytes; 54,528 including presets/metadata |
-| Normal lite image / free app space | 528,376 / 53,188 bytes |
-| FPU probe / single-core lite images | 533,032 / 526,480 bytes |
-| Full sample target link | Refused: XIP exceeds its region by 1,368 bytes |
-| RAM / lowram / pool (normal lite) | 59,324 / 23,280 / 333,636 bytes |
+| Screen font as an LZ4 block (13/10) | 3,228 bytes saved, 5,376 of RAM used |
+| Normal lite image / free app space | 526,964 / 54,600 bytes (13/10; 528,376 / 53,188 on 12/10) |
+| Full sample image / free app space | 581,332 / 232 bytes (13/10; refused by 1,368 bytes on 12/10) |
+| RAM / lowram / pool | 64,908 / 23,280 / 333,636 bytes |
 | Original render hashes | 182 preserved; 16 appended (198 full / 195 lite) |
 | Ladder slope | −24.06 dB/octave, host impulse measurement |
 | Terrain equation reference | RMS 0.000377; max 0.001932, normalized full scale |
@@ -114,14 +120,23 @@ Machine, automation lanes and production float DSP remain outside this series.
 
 Projects and presets saved by synth require this branch to retain new data.
 The web editor rejects a synth backup on firmware that only understands FUN6.
-Back up the device before installing or returning to upstream firmware.
+**Back up the device with the web editor before installing synth and before
+returning to the official firmware:** the first SAVE of a slot or a user-preset
+bank under synth writes FUN7 / preset version 2, which SLOOP 2.6 reads as empty
+(the bytes stay in flash, a second save there overwrites the A/B twin). At boot
+synth leaves a FUN6 slot in flash as it is when its RAM copy has the same
+content (13/10: the earlier build rewrote every slot as FUN7 at the first idle
+moment), so a device that only played, never saved, still goes back to 2.6 with
+its projects.
 
 ## Verification
 
 The [validation record](docs/synth-validation.md) ties the measured results to
 the packaged firmware revision.
 
-Run `sh tests/run_tests.sh` after a successful target build. It includes storage
+Run `sh tests/run_tests.sh` after a successful target build. Since 13/10 it also
+renders the lite profile's goldens (the same file, less the hidden presets) and
+compares the two boot-initialization hashes. It includes storage
 and interrupted-write tests, FUN1–FUN6 migration, raw preset bank migration,
 MIDI routing, matrix shadows and dynamic enum guards, all LFO 2 wave/sync
 combinations, ladder and Terrain reference tests, reverb extremes and switches,

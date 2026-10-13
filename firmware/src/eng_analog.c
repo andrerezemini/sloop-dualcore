@@ -57,7 +57,7 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
     int32_t nz = noise * 200, drv = p[P_E6];
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1];                  /* state in locals: out[] may alias v->s[] */
     int32_t ic1 = v->s[0], ic2 = v->s[1], nst = v->s[2];
-    int32_t fk = ft ? ANALOG_K(p[P_E5]) : 0;
+    int32_t fk = ft && ft != 3u ? ANALOG_K(p[P_E5]) : 0;
     if (ft == 3u) {
         ladder_coef(&lc, cut, p[P_E5]);
         for (i = 0; i < 4u; i++) ls.s[i] = v->s[i + 3u];
@@ -102,7 +102,7 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
         if (drv)                                      /* pre-shifts: drive is up to 4x, no overflow */
             s += mulq15(softclip(((s >> 2) * (drive >> 2)) >> 11) - s, dw);
         {   /* filter: linear up to half scale, then a soft knee (only resonance peaks saturate) */
-            int32_t y = ft == 3u ? ladder_run(&ls, &lc, s >> 1) :
+            int32_t y = ft == 3u ? ladder_q15(&ls, &lc, s >> 1) :
                 ft ? analog_tap(&flt, fk, s >> 1, &ic1, &ic2, ft) : tsvf_lp(&flt, s >> 1, &ic1, &ic2), a = y < 0 ? -y : y;
             if (a > 16000) {
                 a = 16000 + (softclip((a - 16000) * 2) >> 1);
@@ -176,7 +176,7 @@ static const preset_t ANALOG_PRESETS[] = {
     {"AFTER BRASS", {0, 14, 66, 0, 48, 48, 14, 64}, {18, 70, 102, 40}, 28, 0, FX(0, 20, 14, 38),
      XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_AT, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 30)},
     {"SLEW PAD", {4, 19, 60, 3, 61, 36, 0, 32}, {80, 94, 114, 96}, 0, 0, FX(0, 46, 22, 70),
-     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_SLEW, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 16), .rtype = 4},
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_SLEW, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 16)},
     {"EXPR KEYS", {2, 8, 56, 0, 72, 22, 6, 60}, {5, 72, 76, 56}, 17, 0, FX(0, 18, 22, 40),
      XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_EXPR, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 18)},
     {"RAND PLUCK", {0, 6, 48, 0, 43, 85, 22, 64}, {0, 65, 0, 40}, 42, 0, FX(0, 8, 36, 32),
@@ -184,7 +184,7 @@ static const preset_t ANALOG_PRESETS[] = {
     {"DUAL ORBIT", {4, 16, 64, 0, 76, 16, 0, 40}, {60, 82, 116, 82}, 0, 0, FX(0, 44, 28, 58),
      XP(P_L2RATE + 1, 24, P_M1SRC + 1, MS_LFO2, P_M1DST + 1, MD_SHP, P_M1AMT + 1, 32)},
     {"HALL SWELL", {0, 22, 62, 5, 63, 28, 0, 32}, {84, 92, 112, 100}, 0, 0, FX(0, 40, 16, 76),
-     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_VEL, P_M1DST + 1, MD_REV, P_M1AMT + 1, 18), .rtype = 4},
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_VEL, P_M1DST + 1, MD_REV, P_M1AMT + 1, 18)},
 };
 
 static const engine_t ENG_ANALOG = {

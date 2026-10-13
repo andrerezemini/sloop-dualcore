@@ -376,6 +376,7 @@ static void project_new(void)
             song.g[i] = GP[i].def;
     song.solo = 0;
     song.octave = 0;
+    section_fx_mask = 0;                                /* (synth: a new song's sections inherit the globals) */
     sync_reload = 1;
     ui.force = 1;
 }

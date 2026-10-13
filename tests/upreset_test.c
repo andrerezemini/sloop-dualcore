@@ -45,8 +45,22 @@ int main(void) {
     assert(!st_save(OBJ_UPRESET0+1,&bank,sizeof bank)); find_bank(1);
     got=*up_rec(17); assert(up_valid(&got) && !memcmp(&got,&r,sizeof r));
     assert(!up_used(16)&&!up_used(18)&&!up_used(0));
-    r.p[0]=128; assert(up_encode(&bank.r[2],&r)); r.p[0]=-129; assert(up_encode(&bank.r[2],&r)); r.p[0]=-128;
-    assert(!up_encode(&bank.r[2],&r)); up_decode(&bank,2,&got); assert(got.p[0]==-128);
+    r.p[0]=128; assert(!up_encode(&bank.r[2],&r)); up_decode(&bank,2,&got); assert(got.p[0]==127);     /* clamped, */
+    r.p[0]=-129; assert(!up_encode(&bank.r[2],&r)); up_decode(&bank,2,&got); assert(got.p[0]==-128);   /* not refused */
+    r.p[0]=-128; assert(!up_encode(&bank.r[2],&r)); up_decode(&bank,2,&got); assert(got.p[0]==-128);
+    {   /* map by count (SLOOP 1.0 .. 2.6 records): ids below the record's count keep their values, the ones a
+         * newer firmware added take the defaults, E0..E7 are the record's last eight (up_params) */
+        static const uint32_t olds[] = {53u, 58u, 61u, 71u, P_COUNT - 2u};
+        for (uint32_t o = 0; o < 5u; o++) {
+            uint32_t np = olds[o], nc = np - 8u, i;
+            for (i = 0; i < P_COUNT; i++) { def[i] = (int16_t)(1000 + i); r.p[i] = (int16_t)(i < np ? 2000 + i : 7777); }
+            r.np = (uint8_t)np;
+            up_params(&r, values, def);
+            for (i = 0; i < P_E0; i++) assert(values[i] == (i < nc ? (int16_t)(2000 + i) : def[i]));
+            for (i = 0; i < 8u; i++) assert(values[P_E0 + i] == (int16_t)(2000 + nc + i));
+        }
+        r.np = P_COUNT;
+    }
     /* Known 192-byte records from SLOOP 2.6, held in their original sectors. */
     struct legacy_rec { uint8_t used,ver,engine,np; char name[12]; int16_t p[72]; uint8_t note[16],flags[16]; };
     struct legacy_bank { uint32_t magic; uint16_t rsize,nslot; struct legacy_rec r[16]; } old={0};

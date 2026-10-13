@@ -18,7 +18,8 @@ FUNCS = ["analog_render", "digital_render", "phase_render", "lofi_render", "samp
          "trio_render", "trio_pass", "drawbar_render", "drawbar_block",
          "grain_render", "grain_block", "slicer_track", "drums_mix",
          "fm6_op_run", "fm6_op_fb", "fm6_render",     # FM6 (SLOOP 2.4): the operator loops (noinline), the voice
-         "mod_begin", "mod_voice", "ladder_run", "rev_hall", "terrain_render",
+         "mod_begin", "mod_voice", "ladder_run", "rev_hall", "terrain_render", "terrain_surface",   # (called twice a
+         # sub-sample by terrain_render: its own line, the caller counts a call as one instruction)
          "fm1_alnk0_irq"]
 TOL = 0.10                      # exact (no noise): small edits pass, a grown render loop does not
 DIV_W = 8                       # a divide weighs 1 + 8 instructions

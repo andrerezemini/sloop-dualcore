@@ -254,7 +254,8 @@ static __attribute__((noinline)) void rev_room(const int32_t *rev_in, int32_t *o
     for (i = 0; i < n; i++) {
         int32_t a = 0;
         int16_t *c = rev_comb;
-        int32_t in = mulq15(rev_in[i], 2580);           /* 1/8 at -4 dB: level as before the allpass fix */
+        int32_t in = rev_frz ? 0 : mulq15(rev_in[i], 2580);   /* 1/8 at -4 dB: level as before the allpass fix;
+                                                         * held: nothing added (the combs run at gain 1) */
         for (k = 0; k < 4u; k++) {
             int32_t o = c[fx.comb_i[k]];
             fx.comb_lp[k] = o + mulq15(fx.comb_lp[k] - o, 32767 - damp);
@@ -298,9 +299,10 @@ static __attribute__((noinline)) void rev_spring(const int32_t *rev_in, int32_t 
     L3 = (L * 3) >> 2;
     for (i = 0; i < n; i++) {
         uint32_t wp = fx.sp_w, j = (wp & 3u) * (SP_N + 1u);
-        int32_t x = mulq15(rev_in[i], 2580), r = ln[(wp - (uint32_t)L) & SP_MASK], p, o;
+        int32_t x = rev_frz ? 0 : mulq15(rev_in[i], 2580), r = ln[(wp - (uint32_t)L) & SP_MASK], p, o;
         int32_t t0 = ln[(wp - (uint32_t)L2) & SP_MASK], t1 = ln[(wp - (uint32_t)L2 - 1u) & SP_MASK];
-        fx.sp_lp += mulq15(r - fx.sp_lp, kl);
+        if (rev_frz) fx.sp_lp = r;                      /* held: no damping either (as the other models) */
+        else fx.sp_lp += mulq15(r - fx.sp_lp, kl);
         o = fx.sp_lp * g;
         x += (o + ((o >> 31) & 32767)) >> 15;           /* towards 0: a loop of floors would hold an offset */
         o = x - fx.sp_hp + fx.sp_he;                    /* the low cut, its step's remainder kept (as */
@@ -417,7 +419,8 @@ static __attribute__((noinline)) void rev_hall(const int32_t *rev_in, int32_t *o
     if (rev_hl.sz != song.g[G_RSIZE] + 1)
         hall_gains(song.g[G_RSIZE]);
     for (i = 0; i < hn; i++) {
-        int32_t x = (xp + 2 * rev_in[2u * i] + rev_in[2u * i + 1u]) >> 2, v;   /* every other sample, 1 2 1 */
+        int32_t x = rev_frz ? 0 : (xp + 2 * rev_in[2u * i] + rev_in[2u * i + 1u]) >> 2, v;   /* every other sample, 1 2 1;
+                                                         * held: nothing added */
         xp = rev_in[2u * i + 1u];
         x = mulq15(clamp(x, -262143, 262143), 2580);    /* (ROOM's level) */
         v = x - hp + he;                                /* the low cut, its step's remainder kept */
@@ -779,13 +782,13 @@ static void track_filter_run(track_t *t, djf_t *f, const tsvf_t *legacy, int32_t
     int ladder = p[P_TFTYPE] && f->mode < 0;
     if (ladder) {
         ladder_coef_t c;
+        ladder_coef(&c, f->cut, clamp(40+p[P_TRES],0,127));
         if (!(track_ladder_on[k] & (1u<<ch)) || (f->seed & (1u<<ch))) {
-            ladder_seed(&track_ladder[k][ch], n ? clamp(b[0] >> 4, -32768,32767) : 0);
+            ladder_seed(&track_ladder[k][ch], &c, n ? clamp(b[0] >> 5, -32768,32767) : 0);
             track_ladder_on[k] |= (uint8_t)(1u<<ch);
             f->seed &= (uint8_t)~(1u<<ch);
         }
-        ladder_coef(&c, f->cut, clamp(40+p[P_TRES],0,127));
-        for (i=0;i<n;i++) b[i] = ladder_run(&track_ladder[k][ch], &c, clamp(b[i] >> 4, -32768,32767))*16;
+        for (i=0;i<n;i++) b[i] = ladder_bus(&track_ladder[k][ch], &c, b[i]);
     } else {
         tsvf_t c;
         track_ladder_on[k] &= (uint8_t)~(1u<<ch);

@@ -117,15 +117,26 @@ static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t
  * Wide products are integer intermediates (no floating point or 64-bit divide).
  */
 typedef struct { int32_t s[4]; } ladder_t;
-typedef struct { int32_t g, k, norm; } ladder_coef_t;
-static void ladder_seed(ladder_t *l, int32_t in)
-{
-    uint32_t i;
-    for (i = 0; i < 4u; i++) l->s[i] = clamp(in, -32768, 32767) * 256;
-}
+#ifndef LADDER_K127
+#define LADDER_K127 147456           /* 4.5: self-oscillation at -19 dBFS from 49 Hz up (tests/synth_dsp_test.c) */
+#endif
+/* Rounded to nearest, half away from zero. A loop of floors (or of half-up roundings) leans one
+ * way: the states rest a few Q23 units off zero, the output never returns to exactly 0, and the
+ * bias eats the 1 % of loop gain that self-oscillation lives on at a low cutoff (tests/synth_dsp_test.c:
+ * half-up rounding kills it below 63 Hz). The residual that rounding leaves is walked out by
+ * ladder_run's deadband. */
 static inline int32_t ladder_mul(int32_t a, int32_t b)
 {
-    return (int32_t)(((int64_t)a * b) >> 15);
+    int64_t p = (int64_t)a * b;
+    return (int32_t)((p + 16384 - (p < 0)) >> 15);
+}
+typedef struct { int32_t g, k, norm; } ladder_coef_t;
+/* The DC solution for an input in with the loop's feedback k: every stage at in / (1 + k) */
+static void ladder_seed(ladder_t *l, const ladder_coef_t *c, int32_t in)
+{
+    uint32_t i;
+    int32_t y = (int32_t)(((int64_t)clamp(in, -32768, 32767) * 256 * 32768) / (32768 + c->k));
+    for (i = 0; i < 4u; i++) l->s[i] = y;
 }
 static void ladder_coef(ladder_coef_t *c, int32_t cut, int32_t reso)
 {
@@ -136,13 +147,15 @@ static void ladder_coef(ladder_coef_t *c, int32_t cut, int32_t reso)
     if (i < 127)
         g += ((SVF_G[i + 1] - g) * (cut & 255)) >> 8;
     c->g = (g * 32768) / (4096 + g);
-    /* 1 % compensation for fixed-point loss at the self-oscillation end.
-     * RES 127 reaches k=4 (4.04 internally); ordinary settings stay below it. */
-    c->k = clamp(reso, 0, 127) * 132383 / 127;
+    /* RES 127 reaches LADDER_K127 / 32768 of feedback: above the 4 of the ideal ladder, so that
+     * self-oscillation survives the fixed-point losses down to the lowest cutoffs (the tanh table
+     * bounds it); ordinary settings stay well below it. */
+    c->k = clamp(reso, 0, 127) * LADDER_K127 / 127;
     g2 = ladder_mul(c->g, c->g);
     g4 = ladder_mul(g2, g2);
     c->norm = (int32_t)((1u << 30) / (uint32_t)(32768 + ladder_mul(c->k, g4)));
 }
+/* One sample: in Q15, the result in Q23 (the stages' resolution); ladder_q15 / ladder_bus scale it */
 static __attribute__((noinline)) int32_t ladder_run(ladder_t *l, const ladder_coef_t *c, int32_t in)
 {
     int32_t h = 32768 - c->g;
@@ -164,7 +177,26 @@ static __attribute__((noinline)) int32_t ladder_run(ladder_t *l, const ladder_co
         x = v + l->s[i];
         l->s[i] = clamp(x + v, -16777216, 16777216);
     }
-    return clamp(x >> 8, -32768, 32767);
+    if (!in && (uint32_t)(l->s[3] + 4096) < 8192u && (uint32_t)(l->s[0] + 4096) < 8192u &&
+        (uint32_t)(l->s[1] + 4096) < 8192u && (uint32_t)(l->s[2] + 4096) < 8192u)
+        for (i = 0; i < 4u; i++)                        /* no input and every stage below 16 LSB: they walk to
+                                                         * exactly 0 (a low cutoff's steps round to nothing: the
+                                                         * states would rest a few units off, a DC for ever). All
+                                                         * four: an oscillation starting at a low cutoff grows by
+                                                         * less than a unit a sample in its last stage */
+            l->s[i] -= (l->s[i] > 0) - (l->s[i] < 0);
+    return x;
+}
+/* a voice: Q15 in, Q15 out, rounded (so a tail below half an LSB is exactly 0) */
+static inline int32_t ladder_q15(ladder_t *l, const ladder_coef_t *c, int32_t in)
+{
+    return clamp((ladder_run(l, c, in) + 128) >> 8, -32768, 32767);
+}
+/* a track bus (fx.c: +-2^20 of headroom, as the SVF path): in / 32 to the ladder, its Q23 / 8 back */
+static inline int32_t ladder_bus(ladder_t *l, const ladder_coef_t *c, int32_t b)
+{
+    int32_t x = ladder_run(l, c, clamp(b >> 5, -32768, 32767));
+    return clamp((x + 4) >> 3, -1048576, 1048575);
 }
 
 /* amplitude ramp over the block. Blocks are always CTL long, so x / CTL is a

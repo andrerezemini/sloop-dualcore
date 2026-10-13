@@ -8,10 +8,14 @@ The copyright notice stays with the port.
 
 HALL processes the reverb at half the sample rate, interpolates its output, and
 adds its stereo difference to the left bus while subtracting it from the right.
-Changing type fades the preceding model's return over one audio block and clears
-all shared buffers and state before the new model starts. Delay and chorus keep
-their tails. FREEZE preserves the new models' state without interpreting HALL's
-indices as FDN samples.
+Changing type ramps the preceding model's return down over one audio block and
+clears all shared buffers and state before the new model starts (the old tail
+is gone, not faded). Delay and chorus keep their tails. Under FREEZE the three
+models hold what their lines contain: no input is added while held (the combs
+and the spring loop run at gain 1, so anything added would clip) and SPRING's
+loop low-pass is bypassed like the others' damping; the FDN keeps its own
+capture window. A model change while held leaves a silent hold until FREEZE is
+released. No factory preset changes the type.
 
 The reverb line allocation remains 17,368 bytes in `.lowram`: one union holds
 either the legacy lines or the new comb lines and HALL state. The diffuser/spring

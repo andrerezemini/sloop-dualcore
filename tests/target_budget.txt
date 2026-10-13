@@ -28,6 +28,7 @@ fm6_op_fb 26
 fm6_render 362
 mod_begin 139
 mod_voice 59
-ladder_run 22
+ladder_run 41
 rev_hall 2034
 terrain_render 390
+terrain_surface 0

@@ -95,17 +95,19 @@ _Static_assert(ENGI_FM6 == 9u, "ENGINES[ENGI_FM6] is FM6");
 _Static_assert(ENGI_GRAIN == 8u && ENGI_PHYS == 10u && ENGI_NOISE == 11u && ENGI_SLICE == 12u, "ENGINES[] order");
 _Static_assert(ENGI_TERRAIN == 12u + FELUCCA_SLICE, "TERRAIN is appended after all existing engines");
 
+/* a factory preset of a sample set this build left empty (FELUCCA_SAMPLES=lite: tools/gen_samples.py,
+ * SMP_SET_EMPTY): it stays in its engine's table, so a preset number stored by any build (projects, the
+ * web editor) means the same sound in every build, but it is not offered (ui.c BANK, tests/regress.c) */
+static int preset_hidden(uint32_t e, uint32_t pi)
+{
+    const preset_t *p = e < NENGINES && pi < ENGINES[e]->npresets ? &ENGINES[e]->presets[pi] : 0;
+    return p && (e == 4u || e == ENGI_GRAIN) && p->e[0] >= 0 && p->e[0] < 32 && ((SMP_SET_EMPTY >> p->e[0]) & 1u);
+}
+
 /* every factory sound as loud as the others: a level trim per preset, 1/2 dB, measured on a phrase
  * that fits the sound (tools/level_presets.py writes preset_trim.h); a track keeps it in P_ED_FX */
 #include "preset_trim.h"
 static int16_t preset_trim(uint32_t e, uint32_t pi)
 {
-#if SMP_SAMPLES_LITE
-    /* The full bank's level data stays immutable. Lite omits two SAMPLE
-     * patches and FLUTE DUST, so translate its compact browsing indices back
-     * to the original rows before looking up their measured gains. */
-    if (e == 4u && pi >= 5u) pi += 2u;
-    if (e == ENGI_GRAIN && pi >= 2u) pi++;
-#endif
     return e < PT_ENGINES && pi < PT_MAX ? PRESET_TRIM[e][pi] : 0;
 }

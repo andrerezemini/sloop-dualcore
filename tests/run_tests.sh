@@ -80,7 +80,13 @@ run "synth build profiles and lossless assets" python3 tests/synth_s0_test.py
 for b in 0 1; do
     $CC -O2 -w -DFELUCCA_BOOT_BSS=$b -Ibuild/gen -Ifirmware/src -o "$OUT/synth_boot_$b" tests/synth_boot_test.c -lm
     run "synth boot initialization BSS=$b" "$OUT/synth_boot_$b"
+    "$OUT/synth_boot_$b" > "$OUT/synth_boot_$b.txt" 2>/dev/null || true
 done
+if cmp -s "$OUT/synth_boot_0.txt" "$OUT/synth_boot_1.txt"; then
+    echo "synth boot initialization: BSS=0 and BSS=1 render the same hash                ok"
+else
+    echo "synth boot initialization: the two paths differ ($(cat "$OUT/synth_boot_0.txt") vs $(cat "$OUT/synth_boot_1.txt"))"; fail=1
+fi
 
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/ui_pages_test" tests/ui_pages_test.c -lm
 run "live UI: pages, layers (punch, steps, erase, roll, key, mix), holds, drums, REC, fuzz" "$OUT/ui_pages_test" "$OUT"
@@ -166,6 +172,13 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress" tests/regress.c -lm
 # SKIP_CPU_VALGRIND=1 to time instead, which is only a rough check)
 if [ -z "$SKIP_CPU_VALGRIND" ] && command -v valgrind >/dev/null 2>&1; then export CPU_VALGRIND=1; fi
 run "regression: golden renders, health, voices, CPU budget" "$OUT/regress" tests/golden.txt tests/cpu_baseline.txt
+# the lite profile, the image a full feature set needs (SYNTH.md): the same goldens and budgets, less the presets
+# of the sets it leaves empty (engines.c preset_hidden); its header in its own directory, as the full one
+LITE_GEN=build/host-lite-gen
+mkdir -p "$LITE_GEN"
+FELUCCA_SAMPLES=lite python3 tools/gen_samples.py "$LITE_GEN/felucca_samples.h"
+${CC_BIN:-cc} -O2 -w -I"$LITE_GEN" -Ibuild/gen -Ifirmware/src -o "$OUT/regress_lite" tests/regress.c -lm
+run "regression (lite sample profile): golden renders, health, voices, CPU budget" "$OUT/regress_lite" tests/golden.txt tests/cpu_baseline.txt
 # SLICE (tests/slice_test.c) needs a FELUCCA_SLICE=1 build; the engine is not built by default
 
 run "regression: target cost of the render loops" python3 tests/target_budget.py \

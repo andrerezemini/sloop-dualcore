@@ -65,6 +65,7 @@ static int mod_rate_active(const int16_t *p)
 static __attribute__((noinline)) void mod_begin(track_t *t)
 {
     uint32_t part = (uint32_t)(t - trk) % NPART, k, j, active = 0, fade = t->xf_on && t->xf;
+    if (t - trk >= NPART) { t->rp = t->p; return; }   /* (the drums: no shadow of their own) */
     const int16_t *base = fade && t->pold ? t->p_old : t->p;
     int16_t *pm = mod_pm[part];
     int32_t lfo = mulq15(t->lfo_val, t->lfo_fade), depth = 32767;
