@@ -1,10 +1,11 @@
 {
-  "scope": "Integrated synth build; hardware validation pending",
-  "full_profile": "link rejected: XIP overflow1208 bytes, no stale fwsc remains",
+  "scope": "Final integrated synth firmware; hardware validation pending",
+  "firmware_revision": "8e8a415dfb442ebff80510a6c00e5d5c8b98ce57",
+  "full_profile": "link rejected: XIP overflow1368 bytes, no stale fwsc remains",
   "variants": {
     "synth-lite": {
-      "image_bytes": 528216,
-      "headroom": 53348,
+      "image_bytes": 528376,
+      "headroom": 53188,
       "sections": {
         "data": 112,
         "bss": 59212,
@@ -19,35 +20,35 @@
         "FELUCCA_CPU1": true
       },
       "files": {
-        "flash-symbols.tsv": {
-          "bytes": 37903,
-          "sha256": "75f5e6f2ce087a69af715cdb7a0964f1cacbb661b6f0a709d1635d92254edb00"
-        },
         "felucca.bin": {
-          "bytes": 528216,
-          "sha256": "ac89f12bba4367a015c228a9235696eb1705c4607b120248e0aad5855b6d258b"
+          "bytes": 528376,
+          "sha256": "298dbb7147ccefc8f3badb70725926ad39422a835f3c29a972603e0ec964fdb6"
+        },
+        "felucca.dis": {
+          "bytes": 5675323,
+          "sha256": "23f2cbe87681be548236ad2edce475ad14ab66529aad0cebaf863e48026498d9"
+        },
+        "felucca.elf": {
+          "bytes": 570048,
+          "sha256": "0f45f9b9b8e4da4d829177a473574b14f1e4f11be1c7973eec355e464754a4a9"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "b1ad3364b812e81d21d6dc38fc38df585c50519e86f675f3810c435316e0afec"
+          "sha256": "a7e919e4fb379c82ee8175f203b950cf09649d9b35fa53c724455311c4ab8240"
         },
         "flash-report.json": {
-          "bytes": 145005,
-          "sha256": "206da584a5b3d8e6f2f588f54e91add3c4339391557346d3058dae12d2c7a17a"
+          "bytes": 145126,
+          "sha256": "97681cd59c8efcb4b02df1a532f06159021d627cda34d0c93ad552aaf7fdb158"
         },
-        "felucca.dis": {
-          "bytes": 5672412,
-          "sha256": "81cc72ac94a4492f8e4b64e656ec38ab1cd03a3c5574ab59bc0327993c1988cc"
-        },
-        "felucca.elf": {
-          "bytes": 570008,
-          "sha256": "2a2180b7fcf9d563e851e1dc5041b95c378e746708b5b028e4df909c0fda7458"
+        "flash-symbols.tsv": {
+          "bytes": 37942,
+          "sha256": "12dc377db12a3215301d6162a87b1c37efe697c1a591508e5212432acbb1408c"
         }
       }
     },
     "synth-lite-fpu": {
-      "image_bytes": 532872,
-      "headroom": 48692,
+      "image_bytes": 533032,
+      "headroom": 48532,
       "sections": {
         "data": 120,
         "bss": 59320,
@@ -62,35 +63,35 @@
         "FELUCCA_CPU1": true
       },
       "files": {
-        "flash-symbols.tsv": {
-          "bytes": 38769,
-          "sha256": "acb3e87ac91453e217083f24baf2cb85f78565a239e01e176237eb5681ebf145"
-        },
         "felucca.bin": {
-          "bytes": 532872,
-          "sha256": "439238038e8e2ba24fc8c50a8a447ad49629e76e9454accf8c94b3e30b28aecb"
+          "bytes": 533032,
+          "sha256": "343a0160dd6be21b6c7b7f097bd3b3ba4bb1836a87820ba9bc2fc03c20a3f571"
+        },
+        "felucca.dis": {
+          "bytes": 5751884,
+          "sha256": "316e93160ab56bffe27f46e82357b802e5358e90306f2fa7239af8b96fd28874"
+        },
+        "felucca.elf": {
+          "bytes": 575464,
+          "sha256": "04cb65090bcd5b5c9c49de0ee810eb43645e66a2a12433bce277057b16048bbb"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "ed83ae1395e746a1bf2fed57b6d8792d89472946cefadf8924a02fa7551e270b"
+          "sha256": "9f2a5976dae6039397db9cf44f0845541e053f13c266d72b21e2978f30ec1cd4"
         },
         "flash-report.json": {
-          "bytes": 148166,
-          "sha256": "63e5b48d2e3b8deac98e6ca1c86a65e71f201e905515ec7f220fb69f5fbd1765"
+          "bytes": 148287,
+          "sha256": "f760430a93b7387bc2d2d1f8d694222855c6d6e174399f8f81a71f8e9c590c1f"
         },
-        "felucca.dis": {
-          "bytes": 5748972,
-          "sha256": "b1c04fa8081a39b15cf4777e5c9801ed9a24564d47dd0c3c6549a9c85dc06ae2"
-        },
-        "felucca.elf": {
-          "bytes": 575428,
-          "sha256": "211f37aba865221917028681640398e734b5e8d61300f8e2ed497915d54e10e2"
+        "flash-symbols.tsv": {
+          "bytes": 38808,
+          "sha256": "966e4d6c8ba8ee79ff8b365c85f37e4f6906930ecd7c648bd36aecd1a911378a"
         }
       }
     },
     "synth-lite-singlecore": {
-      "image_bytes": 526288,
-      "headroom": 55276,
+      "image_bytes": 526480,
+      "headroom": 55084,
       "sections": {
         "data": 108,
         "bss": 59196,
@@ -105,32 +106,54 @@
         "FELUCCA_CPU1": false
       },
       "files": {
-        "flash-symbols.tsv": {
-          "bytes": 37510,
-          "sha256": "6742c84ed91add2e7f6d9e1ed7d5fbf98d6dec741a972532cf8f57304d1bc672"
-        },
         "felucca.bin": {
-          "bytes": 526288,
-          "sha256": "a913f15f353446ace74d4f7e7177ceed7fbe620e32239a17ffbdff9f504a6b1e"
+          "bytes": 526480,
+          "sha256": "2555dd73d6785fc648fcc025919ad376d1b7a991a2c74ea572c45c1349fb1fd4"
+        },
+        "felucca.dis": {
+          "bytes": 5645558,
+          "sha256": "bc306034e6615936f5894be76f1eb7a80fbdd012497698f25bcb38c18ace895d"
+        },
+        "felucca.elf": {
+          "bytes": 567100,
+          "sha256": "d0fd46e764fcb03607c7a6e914c9d95e9bd8c46868fce2159cdc8c103b352ff9"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "b94df284da4f766ae602eaf7d5ddffd653b0ad869275115265832ecc306d48bf"
+          "sha256": "1e95c0aa262dda3f07141622e31cb2c78cea35e6909c82dfb9e8be1d8c90d518"
         },
         "flash-report.json": {
-          "bytes": 143547,
-          "sha256": "95cfeeec63eb0b44013a6414f818f1dd7f8ce77d5e7c3eb522414eb715c976a8"
+          "bytes": 143668,
+          "sha256": "57b9cbfcecd9c65c05b4e9b0b1f3e9af380b19f9df38518c89a23017db167100"
         },
-        "felucca.dis": {
-          "bytes": 5641777,
-          "sha256": "3e27adfe1f16b8330477d438cdf84ab8765ea2dc73a40f17d2cd48ccf03c0ccc"
-        },
-        "felucca.elf": {
-          "bytes": 567064,
-          "sha256": "a907dc99f17a1995c28faf5c076a497e101213e7c2e756b791ef051d103180f6"
+        "flash-symbols.tsv": {
+          "bytes": 37549,
+          "sha256": "c882af16f64b8b095fcb90795af2a8dc0f3172a73d99de97307e7c0b7b12e988"
         }
       }
     }
   },
-  "source_sha256": "8d936c1ef08e1e2cf9c0b7eea351a61f45c78241cd0ec7d01a489d6736ab3674"
+  "source_fingerprints": {
+    "firmware": {
+      "files": 96,
+      "sha256": "541b85202ad3a31191ca0e9a7fad86fcb5f9d47d093928e8068251c56cd5756f"
+    },
+    "tools": {
+      "files": 26,
+      "sha256": "f1945fc4047e262960ed0d3d5a8c19515c3b4cd2fab18b847e0751c81bbdb190"
+    },
+    "tests": {
+      "files": 51,
+      "sha256": "123006692393f3373eb96e189082cb60a3df55ce271e8256658faa1f7b4cf0c8"
+    },
+    "web": {
+      "files": 10,
+      "sha256": "cb1241b7e5cd1528feb75eee3b98f5725382079d87d8a31c6acb908fe0e9d2b5"
+    },
+    "assets": {
+      "files": 107,
+      "sha256": "1cd1bd54c82be9dbda0564969a95a913bc137d64862dd9ec84dd45e18573da15"
+    }
+  },
+  "source_fingerprint_scope": "All current files in firmware/tools/tests/web/assets, including new source files; Python caches excluded. Firmware bytes equal isolated build snapshot."
 }

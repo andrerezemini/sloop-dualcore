@@ -109,9 +109,9 @@ reply (`cpu1_timeouts`, stack minima and audio load) before considering float DS
 
 The integrated S1–S8 target builds are recorded separately in
 `docs/synth-build-manifest.json`, with SHA-256 hashes of every delivered binary and report.
-The normal lite image is **528,216 bytes**, leaving **53,348 bytes** in the application slot;
-the optional FPU image is **532,872 bytes** and the single-core lite image **526,288 bytes**.
-The final full-library link exceeds XIP by **1,208 bytes** and is deliberately refused.
+The normal lite image is **528,376 bytes**, leaving **53,188 bytes** in the application slot;
+the optional FPU image is **533,032 bytes** and the single-core lite image **526,480 bytes**.
+The final full-library link exceeds XIP by **1,368 bytes** and is deliberately refused.
 A failed build removes its old package, app binary and reports, so an earlier successful
 profile cannot be mistaken for the requested one.
 
