@@ -104,3 +104,21 @@ reply (`cpu1_timeouts`, stack minima and audio load) before considering float DS
   and lite with FPU probe all pass app slot, RAM, lowram, pool, RAM-code and HAL-access checks.
 - Existing full-profile golden hashes are validated by the branch integration suite.
   The lite profile intentionally lacks the three preset entries named above.
+
+## Integrated synth images
+
+The integrated S1–S8 target builds are recorded separately in
+`docs/synth-build-manifest.json`, with SHA-256 hashes of every delivered binary and report.
+The normal lite image is **528,216 bytes**, leaving **53,348 bytes** in the application slot;
+the optional FPU image is **532,872 bytes** and the single-core lite image **526,288 bytes**.
+The final full-library link exceeds XIP by **1,208 bytes** and is deliberately refused.
+A failed build removes its old package, app binary and reports, so an earlier successful
+profile cannot be mistaken for the requested one.
+
+All target-budget entries now have explicit measurements. The five new functions cost
+139 (`mod_begin`), 59 (`mod_voice`), 22 (`ladder_run`), 2,034 (`rev_hall`) and 390
+(`terrain_render`) in the existing instruction-loop cost model. These are static code
+budgets, not on-device CPU timings. The old IRQ budget 174 was already stale on `ram`:
+both `ram` and `synth` measure 268. The previously missing FM6 budgets were measured on
+`ram` as 72/26/362; `synth` is 72/26/361. Only those previously missing/stale entries and
+the five new functions were added; every other existing budget remains unchanged.

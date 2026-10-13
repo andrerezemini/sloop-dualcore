@@ -1,0 +1,136 @@
+{
+  "scope": "Integrated synth build; hardware validation pending",
+  "full_profile": "link rejected: XIP overflow1208 bytes, no stale fwsc remains",
+  "variants": {
+    "synth-lite": {
+      "image_bytes": 528216,
+      "headroom": 53348,
+      "sections": {
+        "data": 112,
+        "bss": 59212,
+        "lr": 23280,
+        "pool": 333636
+      },
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": false,
+        "FELUCCA_CPU1": true
+      },
+      "files": {
+        "flash-symbols.tsv": {
+          "bytes": 37903,
+          "sha256": "75f5e6f2ce087a69af715cdb7a0964f1cacbb661b6f0a709d1635d92254edb00"
+        },
+        "felucca.bin": {
+          "bytes": 528216,
+          "sha256": "ac89f12bba4367a015c228a9235696eb1705c4607b120248e0aad5855b6d258b"
+        },
+        "felucca.fwsc": {
+          "bytes": 610034,
+          "sha256": "b1ad3364b812e81d21d6dc38fc38df585c50519e86f675f3810c435316e0afec"
+        },
+        "flash-report.json": {
+          "bytes": 145005,
+          "sha256": "206da584a5b3d8e6f2f588f54e91add3c4339391557346d3058dae12d2c7a17a"
+        },
+        "felucca.dis": {
+          "bytes": 5672412,
+          "sha256": "81cc72ac94a4492f8e4b64e656ec38ab1cd03a3c5574ab59bc0327993c1988cc"
+        },
+        "felucca.elf": {
+          "bytes": 570008,
+          "sha256": "2a2180b7fcf9d563e851e1dc5041b95c378e746708b5b028e4df909c0fda7458"
+        }
+      }
+    },
+    "synth-lite-fpu": {
+      "image_bytes": 532872,
+      "headroom": 48692,
+      "sections": {
+        "data": 120,
+        "bss": 59320,
+        "lr": 23280,
+        "pool": 333636
+      },
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": true,
+        "FELUCCA_CPU1": true
+      },
+      "files": {
+        "flash-symbols.tsv": {
+          "bytes": 38769,
+          "sha256": "acb3e87ac91453e217083f24baf2cb85f78565a239e01e176237eb5681ebf145"
+        },
+        "felucca.bin": {
+          "bytes": 532872,
+          "sha256": "439238038e8e2ba24fc8c50a8a447ad49629e76e9454accf8c94b3e30b28aecb"
+        },
+        "felucca.fwsc": {
+          "bytes": 610034,
+          "sha256": "ed83ae1395e746a1bf2fed57b6d8792d89472946cefadf8924a02fa7551e270b"
+        },
+        "flash-report.json": {
+          "bytes": 148166,
+          "sha256": "63e5b48d2e3b8deac98e6ca1c86a65e71f201e905515ec7f220fb69f5fbd1765"
+        },
+        "felucca.dis": {
+          "bytes": 5748972,
+          "sha256": "b1c04fa8081a39b15cf4777e5c9801ed9a24564d47dd0c3c6549a9c85dc06ae2"
+        },
+        "felucca.elf": {
+          "bytes": 575428,
+          "sha256": "211f37aba865221917028681640398e734b5e8d61300f8e2ed497915d54e10e2"
+        }
+      }
+    },
+    "synth-lite-singlecore": {
+      "image_bytes": 526288,
+      "headroom": 55276,
+      "sections": {
+        "data": 108,
+        "bss": 59196,
+        "lr": 23280,
+        "pool": 333636
+      },
+      "options": {
+        "FELUCCA_COLD": true,
+        "FELUCCA_BOOT_BSS": true,
+        "FELUCCA_ASSET_LZ4": true,
+        "FELUCCA_FPU_PROBE": false,
+        "FELUCCA_CPU1": false
+      },
+      "files": {
+        "flash-symbols.tsv": {
+          "bytes": 37510,
+          "sha256": "6742c84ed91add2e7f6d9e1ed7d5fbf98d6dec741a972532cf8f57304d1bc672"
+        },
+        "felucca.bin": {
+          "bytes": 526288,
+          "sha256": "a913f15f353446ace74d4f7e7177ceed7fbe620e32239a17ffbdff9f504a6b1e"
+        },
+        "felucca.fwsc": {
+          "bytes": 610034,
+          "sha256": "b94df284da4f766ae602eaf7d5ddffd653b0ad869275115265832ecc306d48bf"
+        },
+        "flash-report.json": {
+          "bytes": 143547,
+          "sha256": "95cfeeec63eb0b44013a6414f818f1dd7f8ce77d5e7c3eb522414eb715c976a8"
+        },
+        "felucca.dis": {
+          "bytes": 5641777,
+          "sha256": "3e27adfe1f16b8330477d438cdf84ab8765ea2dc73a40f17d2cd48ccf03c0ccc"
+        },
+        "felucca.elf": {
+          "bytes": 567064,
+          "sha256": "a907dc99f17a1995c28faf5c076a497e101213e7c2e756b791ef051d103180f6"
+        }
+      }
+    }
+  },
+  "source_sha256": "8d936c1ef08e1e2cf9c0b7eea351a61f45c78241cd0ec7d01a489d6736ab3674"
+}

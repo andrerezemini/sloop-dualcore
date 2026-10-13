@@ -77,7 +77,7 @@ def symbol_report(syms, image_bytes):
     report = {"image_bytes": image_bytes, "app_slot": APP_SLOT, "headroom": APP_SLOT - image_bytes,
               "profile": os.environ.get("FELUCCA_SAMPLES", "full"),
               "options": {k: option(k, d) for k, d in (("FELUCCA_COLD", "1"), ("FELUCCA_BOOT_BSS", "1"),
-                          ("FELUCCA_ASSET_LZ4", "1"), ("FELUCCA_FPU_PROBE", "0"))},
+                          ("FELUCCA_ASSET_LZ4", "1"), ("FELUCCA_FPU_PROBE", "0"), ("FELUCCA_CPU1", "1"))},
               "sections": {k: values.get(f"_{k}_end", 0) - values.get(f"_{k}_start", 0)
                            for k in ("data", "bss", "lr", "pool")}, "symbols": rows}
     (OUT / "flash-report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -112,6 +112,8 @@ def tc(tool, *args):
     r = subprocess.run(cmd, cwd=SRC, capture_output=True, text=True)
     if r.returncode:
         sys.stderr.write(r.stdout + r.stderr)
+        if tool.endswith("/ld") and "region `XIP' overflowed" in r.stderr:
+            raise SystemExit("build: app flash exhausted; rebuild with FELUCCA_SAMPLES=lite")
         raise SystemExit(f"build: {tool} failed")
     if r.stderr.strip():
         sys.stderr.write(r.stderr)
@@ -369,6 +371,9 @@ def main():
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
             print(f"warning: SDK {rel} differs from AC79NN_SDK_V1.2.1; the package will not match the reference")
     OUT.mkdir(parents=True, exist_ok=True)
+    # A failed compile/link must never leave the previous profile's package looking current.
+    for stale in (name, "felucca.bin", "flash-report.json", "flash-symbols.tsv"):
+        (OUT / stale).unlink(missing_ok=True)
     with ThreadPoolExecutor(2) as ex:
         gen, ldr = ex.submit(generate), ex.submit(build_loader)
         gen.result()
