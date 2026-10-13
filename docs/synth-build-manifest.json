@@ -1,6 +1,6 @@
 {
   "scope": "Final integrated synth firmware; hardware validation pending",
-  "firmware_revision": "8e8a415dfb442ebff80510a6c00e5d5c8b98ce57",
+  "firmware_revision": "bc9b5b01f022066cb6fbaa65d115b2dd0d858fb3",
   "full_profile": "link rejected: XIP overflow1368 bytes, no stale fwsc remains",
   "variants": {
     "synth-lite": {
@@ -22,19 +22,19 @@
       "files": {
         "felucca.bin": {
           "bytes": 528376,
-          "sha256": "298dbb7147ccefc8f3badb70725926ad39422a835f3c29a972603e0ec964fdb6"
+          "sha256": "0605cd57c3ad933a91c369f166a8124ca3a11dbeb4a9c8453f1898f15e024545"
         },
         "felucca.dis": {
           "bytes": 5675323,
-          "sha256": "23f2cbe87681be548236ad2edce475ad14ab66529aad0cebaf863e48026498d9"
+          "sha256": "7dae2cdcf6ae38f90c0b26b3e441831110acc30cbccd08c9b666a9adf7ba18af"
         },
         "felucca.elf": {
           "bytes": 570048,
-          "sha256": "0f45f9b9b8e4da4d829177a473574b14f1e4f11be1c7973eec355e464754a4a9"
+          "sha256": "47b7ec2036acd49c902e1448cbfbc2b03d65184f9c4c242c196338d4d1d4a6e9"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "a7e919e4fb379c82ee8175f203b950cf09649d9b35fa53c724455311c4ab8240"
+          "sha256": "84f262293287b9904820ffc446478b800bfb2fd4c5f93102f00eb29434a6e229"
         },
         "flash-report.json": {
           "bytes": 145126,
@@ -65,19 +65,19 @@
       "files": {
         "felucca.bin": {
           "bytes": 533032,
-          "sha256": "343a0160dd6be21b6c7b7f097bd3b3ba4bb1836a87820ba9bc2fc03c20a3f571"
+          "sha256": "f177ba763e0ae8374fa46b85f6fa05cde957c209c283390ae3b4b0cde824bcf0"
         },
         "felucca.dis": {
           "bytes": 5751884,
-          "sha256": "316e93160ab56bffe27f46e82357b802e5358e90306f2fa7239af8b96fd28874"
+          "sha256": "9df61d573f3df4528f8d3f4504bdb80ec29c7a15c43786a59c098f2e9adb1fbc"
         },
         "felucca.elf": {
           "bytes": 575464,
-          "sha256": "04cb65090bcd5b5c9c49de0ee810eb43645e66a2a12433bce277057b16048bbb"
+          "sha256": "c51015debf3b787ba8ee5fd42b8a4a0e2b6a4afbcfb24592d626a5742efec0f8"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "9f2a5976dae6039397db9cf44f0845541e053f13c266d72b21e2978f30ec1cd4"
+          "sha256": "d1599f6677bf75298c260a13ff7f7608602707051419cc9a8c7cf4f21e154904"
         },
         "flash-report.json": {
           "bytes": 148287,
@@ -108,19 +108,19 @@
       "files": {
         "felucca.bin": {
           "bytes": 526480,
-          "sha256": "2555dd73d6785fc648fcc025919ad376d1b7a991a2c74ea572c45c1349fb1fd4"
+          "sha256": "3cb8ba0bec2c055d242521021bc7aecd57afbc550e2ad75a85490e23b00d0a43"
         },
         "felucca.dis": {
           "bytes": 5645558,
-          "sha256": "bc306034e6615936f5894be76f1eb7a80fbdd012497698f25bcb38c18ace895d"
+          "sha256": "2d0b350691b976152aa8877545ba11f37f57d4fcfafa3bfbf30fadf441a0399b"
         },
         "felucca.elf": {
           "bytes": 567100,
-          "sha256": "d0fd46e764fcb03607c7a6e914c9d95e9bd8c46868fce2159cdc8c103b352ff9"
+          "sha256": "7caadfcc00d7130b9336f70ef88fcc782bf7b5d4254b74600add55a4951fd7d0"
         },
         "felucca.fwsc": {
           "bytes": 610034,
-          "sha256": "1e95c0aa262dda3f07141622e31cb2c78cea35e6909c82dfb9e8be1d8c90d518"
+          "sha256": "ee1eef5f801b6f9e66da016dacd4591bbe6fcd29413c0a443f94d064c05d6a9d"
         },
         "flash-report.json": {
           "bytes": 143668,
@@ -136,7 +136,7 @@
   "source_fingerprints": {
     "firmware": {
       "files": 96,
-      "sha256": "541b85202ad3a31191ca0e9a7fad86fcb5f9d47d093928e8068251c56cd5756f"
+      "sha256": "1fa6f5394267c1f3482be10172ca30318613a0ef28b56356bb38852caf7c31c8"
     },
     "tools": {
       "files": 26,
@@ -144,7 +144,7 @@
     },
     "tests": {
       "files": 51,
-      "sha256": "123006692393f3373eb96e189082cb60a3df55ce271e8256658faa1f7b4cf0c8"
+      "sha256": "c528f6dbbc0fb9954d2118d0e7a6470e0323031eb891963e85de154841ecb4c6"
     },
     "web": {
       "files": 10,
