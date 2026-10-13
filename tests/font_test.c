@@ -69,6 +69,7 @@ static uint32_t capital(uint32_t c) { return (c >= 'a' && c <= 'z') || (c >= 0xE
 
 int main(int argc, char **argv)
 {
+    font_unpack();                   /* (synth: FONT_S_DATA is unpacked from FONT_S_PACKED, gfx.c) */
     uint32_t hs = render_all(&FONT_S, 255u), hl = render_all(&FONT_L, 95u), wsum = 0, c;
     for (c = 0; c < 224u; c++) wsum = wsum * 31u + FONT_S.adv[c] * 7u + FONT_S.bw[c];
     for (c = 0; c < 64u; c++) wsum = wsum * 31u + FONT_L.adv[c] * 7u + FONT_L.bw[c];

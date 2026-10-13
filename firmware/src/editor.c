@@ -1138,7 +1138,7 @@ static void FELUCCA_COLD_FN ed_handle(const uint8_t *f, uint32_t n)   /* f: the 
 }
 
 /* main loop: editor frames first; anything else stays for ota_service() */
-static void ed_service(void)
+static void FELUCCA_COLD_FN ed_service(void)
 {
     const uint8_t *p;
     uint32_t n;

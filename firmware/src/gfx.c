@@ -16,6 +16,19 @@ typedef struct {               /* proportional, see tools/gen_font.py */
                                 * bit first, each glyph from a whole byte); 0 = 2 pixels a byte, alpha 0..15 */
 } felucca_font_t;
 #include "felucca_font.h"
+#include "asset_lz4.h"
+/* synth: the S bitmaps live in flash as an LZ4 block (tools/gen_font.py FONT_S_PACKED) and are unpacked into
+ * FONT_S_DATA (RAM) once: at boot (main.c) and, for whoever draws first, here. Not from the audio ISR. */
+#if FONT_S_LZ4
+static uint8_t font_s_ready;
+static void font_unpack(void)
+{
+    if (!font_s_ready)
+        font_s_ready = asset_lz4(FONT_S_PACKED, sizeof FONT_S_PACKED, FONT_S_DATA, sizeof FONT_S_DATA) ? 1u : 2u;
+}
+#else
+static void font_unpack(void) {}
+#endif
 
 #define CV_MAX (240u * 124u)      /* the graph strip is 240 x 124 */
 static uint16_t cv_px[CV_MAX] __attribute__((section(".pool")));
@@ -140,6 +153,7 @@ static int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char
 {
     uint16_t ramp[16];
     uint32_t r = c >> 11, g = (c >> 5) & 63u, b = c & 31u, a;
+    font_unpack();
     for (a = 0; a < 16u; a++)
         ramp[a] = (uint16_t)(((r * a / 15u) << 11) | ((g * a / 15u) << 5) | (b * a / 15u));
     for (; *s; s++) {

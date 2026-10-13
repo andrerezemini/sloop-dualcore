@@ -1158,7 +1158,7 @@ static void uac_service(void)
 }
 #endif
 
-static void FELUCCA_COLD_FN usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
+static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
     if (!usb.up)

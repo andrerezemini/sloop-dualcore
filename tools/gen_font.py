@@ -15,6 +15,7 @@ instead of 21504), the glyph's rows one after the other, high bit first, each
 glyph from a whole byte, and marked bits = 1; an anti-aliased one (TTF) stays at
 2 pixels per byte (high nibble first), alpha 0..15, bits = 0 (gfx.c cv_text).
 """
+import os
 import sys
 from pathlib import Path
 
@@ -164,10 +165,24 @@ def main(out):
                 for x in range(0, bw, 2):
                     data.append((row[x] << 4) | row[x + 1])
         assert len(data) < 65536
-        lines.append(f"static const uint8_t FONT_{name}_DATA[{len(data)}] = {{")
-        for i in range(0, len(data), 24):
-            lines.append("    " + ", ".join(f"0x{b:02x}" for b in data[i:i + 24]) + ",")
-        lines.append("};")
+        compressed = one and os.environ.get("FELUCCA_ASSET_LZ4", "1") != "0"
+        if compressed:                                   # synth: the bitmaps as an LZ4 block (tools/lz4blk.py), unpacked
+            import lz4blk                                #  into this RAM array at boot (gfx.c font_unpack): ~3 KB of flash
+            packed = lz4blk.compress(bytes(data))
+            assert lz4blk.decompress(packed) == bytes(data)
+            lines.append(f"#define FONT_{name}_LZ4 1")
+            lines.append(f"static const uint8_t FONT_{name}_PACKED[{len(packed)}] = {{")
+            for i in range(0, len(packed), 24):
+                lines.append("    " + ", ".join(f"0x{b:02x}" for b in packed[i:i + 24]) + ",")
+            lines.append("};")
+            lines.append(f"static uint8_t FONT_{name}_DATA[{len(data)}];   /* RAM: FONT_{name}_PACKED unpacked at boot */")
+            print(f"font {name}: bitmaps {len(data)} B, {len(packed)} B stored (LZ4)")
+        else:
+            lines.append(f"#define FONT_{name}_LZ4 0")
+            lines.append(f"static const uint8_t FONT_{name}_DATA[{len(data)}] = {{")
+            for i in range(0, len(data), 24):
+                lines.append("    " + ", ".join(f"0x{b:02x}" for b in data[i:i + 24]) + ",")
+            lines.append("};")
         lines.append(f"static const uint16_t FONT_{name}_OFF[{len(offs)}] = {{" + ", ".join(map(str, offs)) + "};")
         lines.append(f"static const uint8_t FONT_{name}_ADV[{len(glyphs)}] = {{" +
                      ", ".join(str(a) for a, _, _ in glyphs) + "};")

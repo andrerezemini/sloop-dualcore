@@ -103,6 +103,7 @@ static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_
 }
 
 static uint8_t ota_msg[8 + 32], ota_wire[2 + 48];
+#include "cold.h"
 #include "scratch.h"                             /* sloop-lab: the decoded host message, in the main loop's scratch */
 #define ota_dec (main_scratch.dec)
 _Static_assert(sizeof main_scratch.dec == OTA_FRAME_MAX, "the scratch holds a frame");
@@ -354,7 +355,7 @@ static void ota_unstage(void)
 }
 
 /* returns only when nothing was committed (refused, failed, or dry run) */
-static int ota_session(void)
+static int FELUCCA_COLD_FN ota_session(void)
 {
 #ifdef OTA_STAGE_RAM
     uint8_t *parm = OTA_STAGE_RAM + 0x400 + 512 + 512;

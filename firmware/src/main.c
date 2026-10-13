@@ -3,6 +3,7 @@
 /* FELUCCA boot and main loop. Boot order: WDT first, boot-loop guard, fatal
  * vectors, guards; then LCD, input (TIMER5 IRQ, 10 kHz), audio (ALNK0 IRQ). */
 #if FELUCCA_FPU_PROBE
+#include "cold.h"
 #include "fm1_fpu_probe.h"
 #endif
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -183,7 +184,7 @@ static void felucca_init(void)
     ui.force = 1;
 }
 
-static void fm1_main(void)
+static void FELUCCA_COLD_FN fm1_main(void)
 {
     int32_t knob = 512 * 16;
     uint32_t healthy_since;
@@ -194,6 +195,7 @@ static void fm1_main(void)
 #endif
     settings_init();
     lcd_init();
+    font_unpack();                                      /* (synth: the screen font from its LZ4 block, gfx.c) */
     sloop_splash();                                     /* the SLOOP logo (splash.c) */
     if (felucca_dbg.magic != DBG_MAGIC) {
         memset(&felucca_dbg, 0, sizeof felucca_dbg);
@@ -340,7 +342,7 @@ static void fm1_main(void)
     }
 }
 
-void fm1_cstart(void)
+void FELUCCA_COLD_FN fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt, boot_mode;
     fm1_time_init();

@@ -323,7 +323,7 @@ static void tap_tempo(void)
 }
 
 /* a key of the layers the UI runs (seq.c lk_q): SEQ steps, SEL key, GLO mix */
-static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
+static void FELUCCA_COLD_FN layer_key(uint32_t layer, uint32_t k, uint32_t down)
 {
     int32_t w = punch_key(k);
     if (layer >= LY_COUNT)
