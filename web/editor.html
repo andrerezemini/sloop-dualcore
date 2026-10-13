@@ -5395,7 +5395,7 @@ const songCount = () => (SG.rows || []).reduce((a, r) => a + Math.max(1, r.times
 function songEdit(fn) { fn(); SG.dirty = true; renderSong(); }
 function renderSongFX() {
   const root = $("songfx"); root.replaceChildren();
-  if (!dev || dev.info.pe0 < 81 || !SG.sections.size) return;
+  if (!dev || !dev.info || dev.info.pe0 < 81 || !SG.sections.size) return;
   root.append(el("h3", { text: t("sectionFX") }), el("p", { class: "dim", text: t("sectionFXHelp") }));
   for (const [scene, bytes] of SG.sections) {
     const f = SYNTH_PROJECT.fx(bytes), box = el("details", {}, el("summary", { text: t("songSection") + " " + "ABCD"[scene] }));
