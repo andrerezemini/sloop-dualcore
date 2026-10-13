@@ -3,7 +3,7 @@
  * (mix_block: sequencer, the 3 synth parts, the synthesised and sampled drum kits, the
  * punch-in FX, the record arm, free takes, MIDI in), then everything stopped and released.
  * Checks: the output stays bounded, every block renders in time on the host, voices never
- * hang (all free a few seconds after the last note), the punch FX and the record state come
+ * hang (all free within 30 seconds after the last note), the punch FX and the record state come
  * back to idle, recorded steps stay well-formed. Seeded: the same run every time. */
 #define main hostsim_main
 #include "hostsim.c"
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             if ((uint32_t)a > peak) peak = (uint32_t)a;
         }
     }
-    /* the end: keys up, MIDI notes off on every channel, stop, punch off; then 5 s */
+    /* the end: keys up, MIDI notes off on every channel, stop, punch off */
     fm1_in.notes = 0;
     fm1_in.buttons = 0;
     punch.hold = 0;
@@ -122,7 +122,31 @@ int main(int argc, char **argv)
         }
     transport_req = 2;
     for (k = 0; k < NTRK; k++) trk[k].p[P_AMODE] = 0;
-    for (b = 0; b < 5u * FS / CTL; b++) mix_block(out, CTL);
+    {
+        /* FM6 owns its operator envelopes: GLASS BELL can still be releasing after
+         * 5 s despite common REL=0. Match stress_test's 30 s deadline; a released
+         * voice must never reopen its gate or create more voices while draining. */
+        uint32_t previous = NPART * NVOICE + NDRUM;
+        for (b = 0; b < 30u * FS / CTL; b++) {
+            uint32_t active = 0;
+            mix_block(out, CTL);
+            for (k = 0; k < NPART; k++)
+                for (i = 0; i < NVOICE; i++) {
+                    assert(!trk[k].v[i].gate);
+                    active += trk[k].v[i].active;
+                }
+            for (i = 0; i < NDRUM; i++) active += drums.v[i].active;
+            assert(active <= previous);
+            previous = active;
+            for (i = 0; i < CTL * 2u; i++)
+                assert(out[i] > -(1 << 24) && out[i] < (1 << 24));
+            if (!active && b + 1u >= 5u * FS / CTL) break;
+        }
+        assert(!previous);                             /* the release deadline itself, before FX drain */
+        printf("soak: released voices drained after %.2f s (limit 30 s)\n", (b + 1u) * (double)CTL / FS);
+        /* Start the FX tail window after the last voice, as stress_test does. */
+        for (b = 0; b < 3u * FS / CTL; b++) mix_block(out, CTL);
+    }
     assert(!song.playing && !song.rec && !rec_wait && !ft_on);
     assert(punch.cur == -1);
     for (k = 0; k < NPART; k++)
