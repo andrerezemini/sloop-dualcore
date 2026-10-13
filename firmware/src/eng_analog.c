@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* ANALOG: two band-limited oscillators (saw / square / tri / sine / PWM),
- * noise, drive and a trapezoidal state-variable filter: low-pass, or (2.6, TYPE) band-pass / high-pass. */
+ * noise, drive and a trapezoidal state-variable filter: low-pass, or (2.6, TYPE) band-pass / high-pass.
+ * synth: TYPE 3 is the four-pole ladder; the original three paths are unchanged. */
 static const char *const N_ANALOG_WAVE[] = {"SAW", "SQR", "TRI", "SIN", "PWM"};
 
 static void analog_note_on(track_t *t, voice_t *v)
@@ -11,6 +12,7 @@ static void analog_note_on(track_t *t, voice_t *v)
         v->ph[0] = 0;                                 /* a fresh note: from phase 0 (an 808 starts the same every time) */
     v->ph[1] = v->ph[0] + 0x40000000u;
     v->s[0] = v->s[1] = 0;                            /* filter */
+    v->s[3] = v->s[4] = v->s[5] = v->s[6] = 0;       /* independent LP24 state */
     if (!v->s[2])
         v->s[2] = 0x1234567 + (int32_t)v->age;        /* noise state */
 }
@@ -36,11 +38,13 @@ static inline int32_t analog_tap(const tsvf_t *c, int32_t k, int32_t in, int32_t
 static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                               const vmod_t *m, uint32_t ft)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t wave = (uint32_t)p[P_E0], i;
     int32_t det = p[P_E1], mix = p[P_E2], noise = p[P_E3];
     int32_t cut = (p[P_E4] << 8) + m->cutoff + (p[P_E7] * (v->pitch16 - 60 * 16) >> 4);
     tsvf_t flt;
+    ladder_coef_t lc;
+    ladder_t ls;
     int32_t drive = 32768 + p[P_E6] * 768;                       /* 1x .. 4x */
     int32_t dw = p[P_E6] * 258;                                  /* DRV: dry -> driven (a clean range low) */
     uint32_t inc1 = m->inc;
@@ -54,7 +58,11 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1];                  /* state in locals: out[] may alias v->s[] */
     int32_t ic1 = v->s[0], ic2 = v->s[1], nst = v->s[2];
     int32_t fk = ft ? ANALOG_K(p[P_E5]) : 0;
-    tsvf_coef(&flt, cut, p[P_E5]);
+    if (ft == 3u) {
+        ladder_coef(&lc, cut, p[P_E5]);
+        for (i = 0; i < 4u; i++) ls.s[i] = v->s[i + 3u];
+    } else
+        tsvf_coef(&flt, cut, p[P_E5]);
     if (det == 0)
         inc2 = inc1;
     for (i = 0; i < n; i++) {
@@ -94,7 +102,8 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
         if (drv)                                      /* pre-shifts: drive is up to 4x, no overflow */
             s += mulq15(softclip(((s >> 2) * (drive >> 2)) >> 11) - s, dw);
         {   /* filter: linear up to half scale, then a soft knee (only resonance peaks saturate) */
-            int32_t y = ft ? analog_tap(&flt, fk, s >> 1, &ic1, &ic2, ft) : tsvf_lp(&flt, s >> 1, &ic1, &ic2), a = y < 0 ? -y : y;
+            int32_t y = ft == 3u ? ladder_run(&ls, &lc, s >> 1) :
+                ft ? analog_tap(&flt, fk, s >> 1, &ic1, &ic2, ft) : tsvf_lp(&flt, s >> 1, &ic1, &ic2), a = y < 0 ? -y : y;
             if (a > 16000) {
                 a = 16000 + (softclip((a - 16000) * 2) >> 1);
                 y = y < 0 ? -a : a;
@@ -108,15 +117,17 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
     v->s[0] = ic1;
     v->s[1] = ic2;
     v->s[2] = nst;
+    if (ft == 3u)
+        for (i = 0; i < 4u; i++) v->s[i + 3u] = ls.s[i];
 }
 static __attribute__((noinline)) void analog_render_f(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                       const vmod_t *m)
 {
-    analog_body(t, v, out, n, m, t->p[P_FTYPE] == 1 ? 1u : 2u);
+    analog_body(t, v, out, n, m, (uint32_t)clamp(render_p(t)[P_FTYPE], 1, 3));
 }
 static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    if (t->p[P_FTYPE])                                  /* BP / HP (2.6) */
+    if (render_p(t)[P_FTYPE])                            /* BP / HP / LP24 */
         analog_render_f(t, v, out, n, m);
     else
         analog_body(t, v, out, n, m, 0);
@@ -156,6 +167,24 @@ static const preset_t ANALOG_PRESETS[] = {
      XP(P_LD_PIT + 1, 1, P_LRATE + 1, 80, P_LFADE + 1, 60, P_GLIDE + 1, 30)},
     {"SAW BASS", {0, 6, 64, 0, 52, 30, 40, 64}, {0, 60, 60, 20}, 30, 1, FX(8, 0, 0, 4), XP(P_TRANS + 1, -24)},
     {"SINE PAD", {3, 10, 64, 4, 90, 0, 0, 32}, {80, 90, 118, 90}, 0, 0, FX(0, 60, 20, 65)},
+    /* synth: append-only expressive bank. rtype is a global-bus recommendation
+     * applied when these two HALL presets are selected; older presets keep it. */
+    {"LADDER ACID", {0, 0, 0, 0, 31, 106, 30, 64}, {0, 61, 16, 26}, 51, 1, FX(10, 0, 24, 16),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_VEL, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 20)},
+    {"WHEEL LEAD", {0, 9, 62, 0, 56, 63, 20, 64}, {3, 65, 108, 42}, 12, 1, FX(0, 12, 30, 28),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_MODW, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 38)},
+    {"AFTER BRASS", {0, 14, 66, 0, 48, 48, 14, 64}, {18, 70, 102, 40}, 28, 0, FX(0, 20, 14, 38),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_AT, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 30)},
+    {"SLEW PAD", {4, 19, 60, 3, 61, 36, 0, 32}, {80, 94, 114, 96}, 0, 0, FX(0, 46, 22, 70),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_SLEW, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 16), .rtype = 4},
+    {"EXPR KEYS", {2, 8, 56, 0, 72, 22, 6, 60}, {5, 72, 76, 56}, 17, 0, FX(0, 18, 22, 40),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_EXPR, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 18)},
+    {"RAND PLUCK", {0, 6, 48, 0, 43, 85, 22, 64}, {0, 65, 0, 40}, 42, 0, FX(0, 8, 36, 32),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_RAND, P_M1DST + 1, MD_CUT, P_M1AMT + 1, 16)},
+    {"DUAL ORBIT", {4, 16, 64, 0, 76, 16, 0, 40}, {60, 82, 116, 82}, 0, 0, FX(0, 44, 28, 58),
+     XP(P_L2RATE + 1, 24, P_M1SRC + 1, MS_LFO2, P_M1DST + 1, MD_SHP, P_M1AMT + 1, 32)},
+    {"HALL SWELL", {0, 22, 62, 5, 63, 28, 0, 32}, {84, 92, 112, 100}, 0, 0, FX(0, 40, 16, 76),
+     XP(P_FTYPE + 1, 3, P_M1SRC + 1, MS_VEL, P_M1DST + 1, MD_REV, P_M1AMT + 1, 18), .rtype = 4},
 };
 
 static const engine_t ENG_ANALOG = {

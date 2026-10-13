@@ -105,6 +105,68 @@ static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t
     return v2;
 }
 
+/* Four-pole resonant ladder, Q15 audio, no oversampling and one tanh per sample.
+ * The inexpensive four one-pole / nonlinear feedback topology is inspired by
+ * Surge's legacy LPMOOGquad (Surge Synth Team, GPL-3.0-or-later), but this is a
+ * scalar trapezoidal implementation, not its SIMD/one-sample-feedback port.
+ * Solving the linear feedback loop avoids the high-cutoff instability of an
+ * explicit Euler ladder. The existing interpolated TANH_Q15 table is shared.
+ * All mutable state belongs to a voice or one track/channel; no shared scratch.
+ * States carry eight extra fractional guard bits (Q23); coefficients and I/O
+ * remain Q15. This avoids low-cutoff deadbands and impulse-response quantization.
+ * Wide products are integer intermediates (no floating point or 64-bit divide).
+ */
+typedef struct { int32_t s[4]; } ladder_t;
+typedef struct { int32_t g, k, norm; } ladder_coef_t;
+static void ladder_seed(ladder_t *l, int32_t in)
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++) l->s[i] = clamp(in, -32768, 32767) * 256;
+}
+static inline int32_t ladder_mul(int32_t a, int32_t b)
+{
+    return (int32_t)(((int64_t)a * b) >> 15);
+}
+static void ladder_coef(ladder_coef_t *c, int32_t cut, int32_t reso)
+{
+    int32_t i, g, g2, g4;
+    cut = clamp(cut, 0, 127 << 8);
+    i = cut >> 8;
+    g = SVF_G[i];
+    if (i < 127)
+        g += ((SVF_G[i + 1] - g) * (cut & 255)) >> 8;
+    c->g = (g * 32768) / (4096 + g);
+    /* 1 % compensation for fixed-point loss at the self-oscillation end.
+     * RES 127 reaches k=4 (4.04 internally); ordinary settings stay below it. */
+    c->k = clamp(reso, 0, 127) * 132383 / 127;
+    g2 = ladder_mul(c->g, c->g);
+    g4 = ladder_mul(g2, g2);
+    c->norm = (int32_t)((1u << 30) / (uint32_t)(32768 + ladder_mul(c->k, g4)));
+}
+static __attribute__((noinline)) int32_t ladder_run(ladder_t *l, const ladder_coef_t *c, int32_t in)
+{
+    int32_t h = 32768 - c->g;
+    int32_t sum = l->s[0], x;
+    uint32_t i;
+    /* Output = G^4 input + (1-G)(G^3 s0 + G^2 s1 + G s2 + s3). */
+    for (i = 1; i < 4u; i++)
+        sum = ladder_mul(sum, c->g) + l->s[i];
+    sum = ladder_mul(sum, h);
+    x = ladder_mul(clamp(in, -32768, 32767) * 256 - ladder_mul(c->k, sum), c->norm);
+    {   /* The existing tanh table, interpolated with Q23 input and output. */
+        int32_t a = x < 0 ? -x : x, q = a >> 16, y;
+        y = q >= 256 ? TANH_Q15[256] * 256 : TANH_Q15[q] * 256 +
+            (((TANH_Q15[q + 1] - TANH_Q15[q]) * (a & 65535)) >> 8);
+        x = x < 0 ? -y : y;
+    }
+    for (i = 0; i < 4u; i++) {
+        int32_t v = ladder_mul(x - l->s[i], c->g);
+        x = v + l->s[i];
+        l->s[i] = clamp(x + v, -16777216, 16777216);
+    }
+    return clamp(x >> 8, -32768, 32767);
+}
+
 /* amplitude ramp over the block. Blocks are always CTL long, so x / CTL is a
  * shift rounded towards zero (-Os would keep a hardware divide per sample) */
 #define CTL_LOG2 5
