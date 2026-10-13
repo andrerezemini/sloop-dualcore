@@ -28,6 +28,11 @@ including overrides from the preceding section. Stopping song mode restores the
 working project's globals. The two effect groups are independent. Sections from
 older versions inherit both groups, preserving previous playback behavior.
 
+SAVE + section key and SAVE > PROJECT preserve the destination section's
+inheritance flags when replacing its sound. An empty slot takes the working
+project's flags, including those of the section reached automatically during
+playback. Song STOP restores the working flags captured before playback.
+
 ## Stored format
 
 The planning document anticipated format 4, but upstream already writes FUN6.

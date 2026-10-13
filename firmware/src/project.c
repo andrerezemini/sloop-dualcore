@@ -506,6 +506,36 @@ static void proj_capture(project_t *p)        /* what is playing now, as a proje
     p->sum = proj_sum(p);
 }
 
+/* Override flags belong to the destination section. Recapturing its sound must
+ * not erase the flags edited in SONG SELECT; an empty slot inherits the current
+ * working snapshot's flags. Autosave/song_backup still use proj_capture directly. */
+static void proj_capture_section(uint32_t scene)
+{
+    project_t *p = &proj_slot[scene & 3u];
+    uint8_t mask = proj_ok(p) ? p->fx_mask : section_fx_mask;
+    proj_capture(p);
+    p->fx_mask = mask & 3u;
+    p->sum = proj_sum(p);
+}
+
+/* Data half of SONG SELECT editing, shared with the host persistence tests. */
+static int proj_section_fx_adjust(project_t *p, uint32_t field, int32_t steps)
+{
+    static const uint8_t id[] = {G_RSIZE, G_RDAMP, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX};
+    if (!proj_ok(p)) return 0;
+    if (field < 2u) {
+        uint32_t mask = 1u << field;
+        p->fx_mask = (uint8_t)((p->fx_mask & ~mask) |
+            ((uint32_t)clamp((int32_t)((p->fx_mask >> field) & 1u) + steps, 0, 1) << field));
+    } else if (field == 2u) p->rtype = (uint8_t)clamp(p->rtype + steps, 0, 3);
+    else if (field < 9u) {
+        uint32_t g = id[field - 3u];
+        p->g[g] = (int16_t)clamp(p->g[g] + steps, GP[g].min, GP[g].max);
+    } else return 0;
+    p->sum = proj_sum(p);
+    return 1;
+}
+
 /* a project's tracks (and its globals, all: a load; or only the drum level / reverb / delay: a song
  * section) into the working one, every value back inside its range. The audio ISR must not run
  * meanwhile (the song sections: called from it; a load: IRQ off) */
@@ -523,8 +553,7 @@ static void proj_apply(const project_t *p, int all)
     song.g[G_DRDLY] = (int16_t)clamp(p->drdly, GP[G_DRDLY].min, GP[G_DRDLY].max);   /* (a load and a section, as REV) */
     if (all || (p->fx_mask & 2u))
         song.g[G_RTYPE] = (int16_t)clamp(p->rtype, 0, 3);
-    if (all)
-        section_fx_mask = p->fx_mask & 3u;
+    section_fx_mask = p->fx_mask & 3u;            /* automatic sections become the working snapshot too */
     proj_tx_get(p);                                     /* GLO > TEXTURE (2.6): a load and a section */
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
@@ -595,19 +624,7 @@ static int32_t section_fx_get(uint32_t scene, uint32_t field)
 }
 static void section_fx_adjust(uint32_t scene, uint32_t field, int32_t steps)
 {
-    static const uint8_t id[] = {G_RSIZE, G_RDAMP, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX};
-    project_t *p = &proj_slot[scene & 3u];
-    if (song.playing || transport_req || !proj_ok(p)) return;
-    if (field < 2u) {
-        uint32_t mask = 1u << field;
-        p->fx_mask = (uint8_t)((p->fx_mask & ~mask) |
-            ((uint32_t)clamp(section_fx_get(scene, field) + steps, 0, 1) << field));
-    } else if (field == 2u) p->rtype = (uint8_t)clamp(p->rtype + steps, 0, 3);
-    else if (field < 9u) {
-        uint32_t g = id[field - 3u];
-        p->g[g] = (int16_t)clamp(p->g[g] + steps, GP[g].min, GP[g].max);
-    } else return;
-    p->sum = proj_sum(p);
+    if (song.playing || transport_req || !proj_section_fx_adjust(&proj_slot[scene & 3u], field, steps)) return;
     sec_dirty |= (uint8_t)(1u << (scene & 3u));
     ui.force = 1;
 }
@@ -640,7 +657,7 @@ static void project_save(uint32_t slot)
 #if FELUCCA_ARRANGER
     if (song.playing || transport_req) { ui_message("STOP BEFORE SAVE"); return; }
 #endif
-    proj_capture(p);
+    proj_capture_section(slot);
 #if FELUCCA_FLASH
     if (flash_ok) {
         ui_message(st_save(OBJ_PROJECT0 + (slot & 3u), p, sizeof *p) ? "SAVE ERROR" : "SAVED");
@@ -1123,7 +1140,7 @@ static void section_store(uint32_t s)
 {
     s &= 3u;
     fm1_irq_off();                                      /* (the audio ISR may be applying a section) */
-    proj_capture(&proj_slot[s]);
+    proj_capture_section(s);
     live_sec = (int8_t)s;
     fm1_irq_on();
     sec_dirty |= (uint8_t)(1u << s);

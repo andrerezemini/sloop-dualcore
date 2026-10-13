@@ -493,6 +493,35 @@ int main(void)
         ok &= song.g[G_RTYPE] == 3 && song.g[G_RSIZE] == 115 && song.g[G_RDAMP] == 22 && song.g[G_DFDBK] == 12;
         bad += check("FUN7 section FX: independent delay/reverb overrides, inherited values, reverb type and capture", ok);
     }
+    {
+        /* The native SONG editor changes the destination, whereas SAVE + key and
+         * SAVE > PROJECT capture the working sound. Both use this exact helper. */
+        section_fx_mask = 0;
+        proj_capture(&proj_slot[1]);
+        proj_apply(&proj_slot[1], 1);
+        ok = proj_section_fx_adjust(&proj_slot[1], 1, 1);
+        trk[0].p[P_LEVEL] = 73;
+        proj_capture_section(1);
+        ok &= proj_ok(&proj_slot[1]) && proj_slot[1].fx_mask == 2 &&
+              pt_get(&proj_slot[1].t[0], P_LEVEL) == 73;
+        bad += check("section FX edit -> store: destination override survives capture of the working sound", ok);
+        ok = proj_section_fx_adjust(&proj_slot[1], 0, 1) &&
+             proj_section_fx_adjust(&proj_slot[1], 1, -1);
+        section_fx_mask = 3;
+        proj_capture_section(1);
+        ok &= proj_ok(&proj_slot[1]) && proj_slot[1].fx_mask == 1;
+        bad += check("section FX edit -> project save: enable and disable survive an unrelated working mask", ok);
+        memset(&proj_slot[2], 0, sizeof proj_slot[2]);
+        proj_apply(&proj_slot[1], 0);
+        proj_capture_section(2);
+        bad += check("automatic section apply -> save new slot: active override flags follow the section",
+                     section_fx_mask == 1 && proj_ok(&proj_slot[2]) && proj_slot[2].fx_mask == 1);
+        section_fx_mask = 2;
+        proj_slot[2].sum++;                       /* an invalid destination is a new slot */
+        proj_capture_section(2);
+        bad += check("invalid section -> save: working flags replace untrusted destination metadata",
+                     proj_ok(&proj_slot[2]) && proj_slot[2].fx_mask == 2);
+    }
     q2 = q;
     bad += check("2.6 SAVE > PROJECT > ERASE: an object of no bytes is no project (an empty slot, older SLOOP too)",
                  !proj_import(&q2, &q, 0));

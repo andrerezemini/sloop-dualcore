@@ -44,6 +44,7 @@ int main(int argc, char **argv)
         if (!(k % 2u)) put_step(&trk[2], k, 1, lead, ST_NOTE, 0);
         put_step(TDRUM, k, k % 4u ? 1 : 2, drum, ST_NOTE, 0);
     }
+    section_fx_mask = 1;
     capture(0);
     for (i = 0; i < NPART; i++)
         for (k = 0; k < 16; k++) {
@@ -53,7 +54,9 @@ int main(int argc, char **argv)
     host_preset_req(&trk[2], 0, 1);             /* change the lead's engine at the section boundary */
     song.g[G_DRLVL] = 80;
     TDRUM->p[P_E0] = 4;                       /* drum kit is saved with the section */
+    section_fx_mask = 2;
     capture(1);
+    section_fx_mask = 0;                     /* the pre-song loop inherits FX */
     arr_defaults(&arrangement);
     arrangement.count = 2;
     arrangement.entry[0] = (arr_entry_t){0, 2};
@@ -63,7 +66,12 @@ int main(int argc, char **argv)
     if (f) wav_hdr(f, frames);
     for (frame = 0; frame < frames; frame += CTL) {
         mix_block(out, CTL);
-        if (song.playing && arrangement_clock.index == 1u && !at_change) at_change = frame;
+        if (song.playing && arrangement_clock.index == 1u && !at_change) {
+            at_change = frame;
+            /* Same capture as SAVE + key during playback: the new C follows B. */
+            proj_capture_section(2);
+            assert(section_fx_mask == 2 && proj_ok(&proj_slot[2]) && proj_slot[2].fx_mask == 2);
+        }
         if (!song.playing && frame && !at_stop) at_stop = frame;
         uint32_t sounding = 0;
         for (i = 0; i < NPART; i++)
@@ -88,6 +96,11 @@ int main(int argc, char **argv)
         assert(trk[i].seq_n == 0);
         for (k = 0; k < NVOICE; k++) assert(!trk[i].v[k].gate);
     }
+    /* STOP restores the pre-song flags as well as its sound. */
+    assert(section_fx_mask == 0);
+    proj_capture_section(3);
+    assert(proj_ok(&proj_slot[3]) && proj_slot[3].fx_mask == 0);
+    memset(&proj_slot[3], 0, sizeof proj_slot[3]);
     /* A missing later scene must prevent even the first scene from starting. */
     arrangement.entry[1].scene = 3;
     transport_req = 1; events_block(CTL);
