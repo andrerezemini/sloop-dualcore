@@ -100,7 +100,7 @@ static void formant_note_on(track_t *t, voice_t *v)
 
 static void formant_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     fres_t r1, r2, r3, r4;
     int32_t fa[3], ba[3], fb[3], bb[3], k, j, buzz, oq, tilt, gv, gn, og, ogk;
     uint32_t inc = m->inc, i, te, tp, rp, rn, ratio, bws, f0;

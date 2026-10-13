@@ -133,7 +133,7 @@ static int32_t drw_level(const int16_t *p, uint32_t k)
 static void drawbar_block(track_t *t)
 {
     drw_trk_t *T = &drw_of(t)->t;
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t k, perc = (uint32_t)p[P_E4] % 7u, rot = (uint32_t)p[P_E7] % 3u;
     int32_t s = 0, lv[DRW_NP];
     uint32_t norm;

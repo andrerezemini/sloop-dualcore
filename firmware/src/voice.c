@@ -11,6 +11,7 @@
  * over one block (stage 4: the envelope goes to 0, the block's amplitude ramp
  * declicks it); one of the part's own is restarted in place. Extra UNISON
  * voices only start when there is room. The drum track has its own voices (drums.c). */
+#include "mod.c"
 static uint32_t vage;                                   /* voice ages: one clock for every part */
 /* engines that play recorded material (a position, not a phase): no phases kept or spread */
 #if FELUCCA_SLICE
@@ -18,9 +19,9 @@ static int eng_sampled(const engine_t *e) { return e == &ENG_SAMPLE || e == &ENG
 #else
 static int eng_sampled(const engine_t *e) { return e == &ENG_SAMPLE; }
 #endif
-static int32_t lfo_wave(track_t *t, uint32_t ph)
+static int32_t lfo_wave(const track_t *t, uint32_t ph, uint32_t wave)
 {
-    switch (t->p[P_LWAVE]) {
+    switch (wave) {
     case 1:
         return osc_tri(ph);
     case 2:
@@ -52,17 +53,47 @@ static __attribute__((noinline)) uint32_t lfo_sync_inc(const int16_t *p)   /* (n
 
 static void track_lfo_tick(track_t *t)
 {
+    const int16_t *p = render_p(t);
     uint32_t old = t->lfo_ph;
-    t->lfo_ph += t->p[P_LSYNC] ? lfo_sync_inc(t->p) : LFO_INC[t->p[P_LRATE] & 127];
-    if (t->lfo_ph < old)
-        t->lfo_rnd = rng();
-    t->lfo_val = lfo_wave(t, t->lfo_ph);
-    if (t->p[P_LPOL])                                   /* UNI: 0..+1 (the depths reach as far, one way only) */
+    t->lfo_ph += p[P_LSYNC] ? lfo_sync_inc(p) : LFO_INC[p[P_LRATE] & 127];
+    if (t->lfo_ph < old) {
+        t->lfo_rnd = rng(); /* legacy draw retained: old renders must stay bit-identical */
+        t->lfo_prev = t->mod_hold;
+        t->mod_hold = (int16_t)(mod_random(&t->mod_hold_seed) >> 16);
+    }
+    t->lfo_val = lfo_wave(t, t->lfo_ph, p[P_LWAVE]);
+    if (p[P_LPOL])                                      /* UNI: 0..+1 (the depths reach as far, one way only) */
         t->lfo_val = (t->lfo_val + 32768) >> 1;
     if (t->lfo_fade < 32767) {
-        int32_t step = (int32_t)(ENV_LIN[t->p[P_LFADE] & 127] >> 9);
-        t->lfo_fade = t->p[P_LFADE] ? clamp(t->lfo_fade + (step ? step : 1), 0, 32767) : 32767;
+        int32_t step = (int32_t)(ENV_LIN[p[P_LFADE] & 127] >> 9);
+        t->lfo_fade = p[P_LFADE] ? clamp(t->lfo_fade + (step ? step : 1), 0, 32767) : 32767;
     }
+}
+
+/* A second oscillator; RATE zero disables it even with SYNC selected. Its RNG
+ * belongs to this track and never changes the legacy LFO's draw sequence. */
+static void track_lfo2_tick(track_t *t)
+{
+    const int16_t *p = render_p(t);
+    uint32_t old = t->lfo2_ph, inc;
+    if (!p[P_L2RATE]) { t->lfo2_val = t->lfo2_fade = 0; return; }
+    inc = LFO_INC[p[P_L2RATE] & 127];
+    if (p[P_L2SYNC]) {
+        uint32_t cyc = (uint32_t)FS * 60u / (uint32_t)clamp(song.g[G_BPM],20,300) *
+            LSYNC_PULSES[(uint32_t)p[P_L2SYNC] % NELEM(LSYNC_PULSES)] / 24u;
+        if (!cyc) cyc = 1;
+        inc = (0xFFFFFFFFu / cyc) * CTL + ((0xFFFFFFFFu % cyc) * CTL + CTL) / cyc;
+    }
+    t->lfo2_ph += inc;
+    if (t->lfo2_ph < old) mod_random(&t->lfo2_rnd);
+    switch (p[P_L2WAVE]) {
+    case 1: t->lfo2_val = osc_tri(t->lfo2_ph); break;
+    case 2: t->lfo2_val = (int32_t)(t->lfo2_ph >> 16)-32768; break;
+    case 3: t->lfo2_val = t->lfo2_ph < 0x80000000u ? 32767 : -32767; break;
+    case 4: t->lfo2_val = t->lfo2_rnd ? (int16_t)(t->lfo2_rnd >> 16) : 0; break;
+    default: t->lfo2_val = osc_sine(t->lfo2_ph); break;
+    }
+    t->lfo2_fade = 32767;
 }
 
 /* voices the engine may use (POLY and UNISON): its cap, else all of them */
@@ -284,6 +315,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     int32_t s0 = v->s[0], s1 = v->s[1], s4 = v->s[4], s5 = v->s[5], s6 = v->s[6], s7 = v->s[7];
     v->note = (uint8_t)note;
     v->vel = (uint8_t)vel;
+    v->mvel = t->m_vel; v->mrnd = t->m_rnd; t->m_vi = (uint8_t)(v-t->v);
     v->gate = 1;
     v->active = 1;
     v->stage = 1;
@@ -352,6 +384,7 @@ static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int g
             }
         } else {                                            /* legato: new pitch, same envelope */
             v->note = (uint8_t)note;
+            v->mvel = t->m_vel; v->mrnd = t->m_rnd; t->m_vi = (uint8_t)(v-t->v);
             v->pitch16 = (int32_t)note * 16;
             if (vel > v->vel && nv == 1u)
                 v->vel = (uint8_t)vel;
@@ -418,12 +451,14 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         t->xp_vel[i] = (uint8_t)vel;
         return;
     }
+    vel = mod_note(t, note, vel);
     for (i = 0; i < NVOICE; i++)
         any |= t->v[i].gate;
     if (!any) {                                        /* fresh phrase: LFO retrigger (TRIG NOTE) and fade */
         if (!t->p[P_LTRIG])
             t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
         t->lfo_fade = 0;
+        t->lfo2_ph = (uint32_t)t->p[P_L2PHS] << 25;
     }
     if (mode == V_POLY) {
         voice_t *v = voice_alloc(t, note);
@@ -650,7 +685,7 @@ static uint32_t esync_one(uint32_t quarter, int32_t v, uint32_t i)
 static __attribute__((noinline)) void esync_coef(const track_t *t)   /* (not inlined: its divides stay out of the
                                                                     * audio ISR's loop over the voices) */
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t *ek = esync_k[(uint32_t)(t - trk) % NTRK];
     if (p[P_ESYNC]) {
         uint32_t q = (uint32_t)FS * 60u / (uint32_t)clamp(song.g[G_BPM], 20, 300);   /* a beat (a quarter), samples */
@@ -668,7 +703,7 @@ static __attribute__((noinline)) void esync_coef(const track_t *t)   /* (not inl
 static int32_t env_tick(track_t *t, voice_t *v)
 {
     const uint32_t *ek = esync_k[(uint32_t)(t - trk) % NTRK];   /* the part's steps (esync_coef) */
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     int32_t sus = (int32_t)p[P_SUS] << 17;              /* Q24 */
     switch (v->stage) {
     case 1:
@@ -711,7 +746,9 @@ static int32_t env_tick(track_t *t, voice_t *v)
 static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
 {
     const engine_t *e = ENGINES[t->engine];
-    const int16_t *p = t->p;
+    int own_view = !t->rp;
+    if (own_view) mod_begin(t);
+    const int16_t *p = render_p(t);
     uint32_t i;
     int32_t lfo = mulq15(t->lfo_val, t->lfo_fade);
     /* TUNE in cents: whole 1/16 semitones in the pitch, the rest as a fine factor (no dead zone) */
@@ -719,15 +756,12 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     int32_t tune_fine = (song.g[G_TUNE] * 16 - tune * 100) * 2367 / 16000;   /* rest, in 1/4096 (1 ct = 2.367) */
     uint32_t nr = 0, fade = t->xf_on && t->xf;
     int32_t bendq;
-    int16_t pe_new[8];
+    uint32_t part = (uint32_t)(t-trk) % NPART;
+    if (mod_state[part].depth < 32767) lfo = mulq15(lfo, mod_state[part].depth);
     for (i = 0; i < n; i++)
         out[i] = 0;
-    if (fade)                                           /* engine switch: the old engine, its own values */
-        for (i = 0; i < 8u; i++) {
-            pe_new[i] = t->p[P_E0 + i];
-            t->p[P_E0 + i] = t->pe_old[i];
-        }
     track_lfo_tick(t);
+    track_lfo2_tick(t);
     esync_coef(t);                                      /* this block's envelope steps for env_tick (ENV SYNC) */
     t->bend_s = (int16_t)(t->bend_s + ((t->bend - t->bend_s) >> 2) + (t->bend > t->bend_s) - (t->bend < t->bend_s));
     bendq = ((int32_t)t->bend_s * clamp(song.g[G_BEND], 1, 12)) >> 1;   /* MIDI pitch bend (2.6): 1/4096 semitone,
@@ -795,13 +829,12 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (v->vel > 110)                               /* accent opens the filter with the env */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
+        if (mod_state[part].on) mod_voice(t, v, &m, lfo);
         e->render(t, v, out, n, &m);
         nr++;
     }
-    if (fade) {
-        for (i = 0; i < 8u; i++)
-            t->p[P_E0 + i] = pe_new[i];
-        t->xf--;
-    }
+    if (fade) t->xf--;
+    if (!t->v[t->m_vi % NVOICE].active) t->m_env = 0;
+    if (own_view) t->rp = 0;
     return nr;
 }

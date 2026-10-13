@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "cold.h"
 /* Editor protocol: SysEx for the web editor (web/EDITOR_PROTOCOL.md; v2 = user presets + live sync,
  * v3 = four tracks: the v1 / v2 commands act on the selected track, cmds 27-30 reach any track;
  * v4 = TRACK_PARAM (31) and the TRACK_CHANGED push (32), enabled by WATCH bit 1;
@@ -426,7 +427,7 @@ static const uint8_t *ed_bk_obj(uint32_t id, uint32_t *len)   /* 0 = no such obj
     if (id == 6u || id == 7u) {                           /* a user preset bank, read where it is (upreset.c) */
         const up_bank_t *bk = up_bank_xip[id - 6u];
         if (bk)
-            *len = sizeof *bk;
+            *len = 8u + UP_PER_BANK * bk->rsize;
         return bk ? (const uint8_t *)bk : (const uint8_t *)&up_rec_none;
     }
     if (id == 8u) {                                       /* the FM6 patch bank, in flash (XIP) */
@@ -476,7 +477,7 @@ static uint32_t ed_bk_commit(void)
         const up_bank_t *b = (const up_bank_t *)raw;
         if (ed_flash_busy())
             return 3;
-        if (n && (n != sizeof *b || b->magic != UP_BANK_MAGIC || b->rsize != sizeof(up_rec_t) || b->nslot != UP_PER_BANK))
+        if (n && !up_bank_ok(b, (int)n))
             return 2;
         if (!flash_ok || st_save(OBJ_UPRESET0 + id - 6u, raw, n))
             return 4;
@@ -629,7 +630,7 @@ static int ed_backup(uint32_t cmd, const uint8_t *a, uint32_t na)   /* no flash:
 #include "editor_fm6.c"                               /* v9: the FM6 patches (68..71) */
 #include "editor_dsyn.c"                              /* v10: the SYN drum kits (72..76) */
 
-static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0 and F7 */
+static void FELUCCA_COLD_FN ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0 and F7 */
 {
     uint32_t cmd = f[3], i;
     const uint8_t *a = f + 4;

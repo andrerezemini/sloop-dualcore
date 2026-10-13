@@ -670,7 +670,8 @@ static int p_lockable(uint32_t id)
 {
     return id <= P_LD_AMP || id == P_SGATE || (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
            id == P_DETUNE || (id >= P_SLCR && id <= P_SLDEPTH) || (id >= P_E0 && id <= P_E7) || id == P_TFLT ||
-           (id >= P_IA && id <= P_IMIX);   /* 2.6: the INSERT's values and MIX */
+           (id >= P_IA && id <= P_IMIX) || id == P_TRES ||
+           (id >= P_M1AMT && id <= P_M4AMT && (id-P_M1AMT)%3u == 0);   /* 2.6: the INSERT's values and MIX */
 }
 /* the range of p[id] on track t (the engine that renders: t->engine; the drum track's P_E0: the kit) */
 static const param_desc_t *lock_desc(const track_t *t, uint32_t id)
@@ -1175,7 +1176,7 @@ static void arp_tick(track_t *t, uint32_t adv)
         if (n == KB_SILENT)
             return;
         t->arp_note = (uint8_t)n;
-        t->arp_off = slen * (uint32_t)t->p[P_AGATE] / 128u;
+        t->arp_off = mod_time(t, slen * (uint32_t)t->p[P_AGATE] / 128u);
         trk_note_on(t, n, 100);
         seq_out_on(t, n, 100);
         if (((song.rec >> trk_index(t)) & 1u) && song.playing)
@@ -1915,7 +1916,7 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     uint32_t next_tie = t->step[(t->seq_idx + 1u) % trk_len(t)].time == ST_TIE;
     if (s->time == ST_TIE) {
         if (t->seq_n) {
-            t->seq_off = gate + slen / 2u;
+            t->seq_off = mod_time(t, gate + slen / 2u);
             t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie;   /* chains hold at any GATE / swing */
         }
         return;
@@ -1959,7 +1960,7 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u))
             t->seq_notes[t->seq_n++] = s->note[i];
-    t->seq_off = gate;
+    t->seq_off = mod_time(t, gate);
     t->seq_hold = !s->rat && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
 }
 
@@ -2013,7 +2014,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
                 trk_note_off(t, s->note[i]);
                 trk_note_on(t, s->note[i], step_vel(s, i));
                 seq_out_on(t, s->note[i], step_vel(s, i));
-                t->seq_off = slen / hits * (uint32_t)t->p[P_SGATE] / 128u;
+                t->seq_off = mod_time(t, slen / hits * (uint32_t)t->p[P_SGATE] / 128u);
                 for (j = 0; j < t->seq_n && t->seq_notes[j] != s->note[i]; j++)
                     ;
                 if (j == t->seq_n && t->seq_n < 4u)
@@ -2567,9 +2568,11 @@ static void events_block(uint32_t n)
             if (st == 0xB0u) {
                 if (d1 == 64u)
                     midi_pedal(ch, TSEL, d2);
+                mod_midi(TSEL, st, d1, d2);
                 midi_cc(TSEL, d1, d2);
                 continue;
             }
+            if (st == 0xD0u) { mod_midi(TSEL, st, d1, d2); continue; }
             if (st == 0xE0u) {                        /* pitch bend (2.6) */
                 if (!is_drum(TSEL))
                     midi_bend(ch, TSEL, d1, d2);
@@ -2593,10 +2596,15 @@ static void events_block(uint32_t n)
                 if (!song.g[G_ROUTE] && (t = midi_track(ch)) != 0) {
                     if (d1 == 64u)
                         midi_pedal(ch, t, d2);
+                    mod_midi(t, st, d1, d2);
                     midi_cc(t, d1, d2);
                 }
                 else if (!song.g[G_ROUTE])
                     (void)midi_learned(d1, d2);           /* (OTHER = OFF: a learned CC still works, on any channel) */
+                continue;
+            }
+            if (st == 0xD0u) {
+                if (!song.g[G_ROUTE] && (t = midi_track(ch)) != 0) mod_midi(t, st, d1, d2);
                 continue;
             }
             if (st == 0xC0u) {                            /* Program Change (2.6): the sound of the track its channel

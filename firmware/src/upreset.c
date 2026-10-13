@@ -17,69 +17,115 @@
  *
  * With -DUP_HOST (host test) only the part above #ifndef UP_HOST is built;
  * it needs nothing but core.h. */
+/* Logical records are 256 bytes. On flash, signed-byte parameters make a
+ * 160-byte v2 record, so 16 slots still fit one atomic A/B sector payload.
+ * Using 256-byte wire records would OVERFLOW the existing 3840-byte payload;
+ * the apparently free flash at E7000 belongs to user sample slot 4. */
 #define UP_PER_BANK 16u
-#define UP_PMAX 72u                              /* room for P_COUNT to grow */
+#define UP_PMAX 104u
 #define UP_USED 0xA5u
-#define UP_VER 1u
-#define UP_BANK_MAGIC 0x31425055u                /* "UPB1" */
+#define UP_VER 2u
+#define UP_BANK_MAGIC 0x31425055u
+#define UP_V1_SIZE 192u
 typedef struct {
-    uint8_t used, ver, engine, np;               /* UP_USED, UP_VER, engine, P_COUNT when stored */
-    char name[12];                               /* ASCII 32..126, 0-padded (no 0 when 12 long) */
+    uint8_t used, ver, engine, np;
+    char name[12];
     int16_t p[UP_PMAX];
-    uint8_t note[16], flags[16];                 /* note 0 = rest; flags 1 accent, 2 slide, 4 tie */
+    uint8_t note[16], flags[16];
 } up_rec_t;
+typedef struct {
+    uint8_t used, ver, engine, np;
+    char name[12];
+    int8_t p[UP_PMAX];
+    uint8_t note[16], flags[16], reserved[8];
+} up_wire_t;
 typedef struct {
     uint32_t magic;
     uint16_t rsize, nslot;
-    up_rec_t r[UP_PER_BANK];
+    up_wire_t r[UP_PER_BANK];
 } up_bank_t;
-_Static_assert(sizeof(up_rec_t) == 192, "user preset record layout");
-_Static_assert(P_COUNT <= UP_PMAX && P_COUNT < 128, "user preset record: P_COUNT");
-#ifdef UP_HOST
-static up_bank_t up_bank[UP_SLOTS / UP_PER_BANK];
-static up_rec_t *up_rec(uint32_t k) { return &up_bank[k / UP_PER_BANK].r[k % UP_PER_BANK]; }
-#else
-static const up_bank_t *up_bank_xip[UP_SLOTS / UP_PER_BANK];   /* each bank's current copy in the window, 0 = none */
-static const up_rec_t up_rec_none;                              /* an empty slot (up_valid says no) */
+_Static_assert(sizeof(up_rec_t) == 256 && sizeof(up_wire_t) == 160, "user preset layouts");
+_Static_assert(sizeof(up_bank_t) <= 3840, "atomic preset bank payload");
+_Static_assert(P_COUNT <= UP_PMAX && P_COUNT < 128, "user preset parameter count");
+static const up_bank_t *up_bank_xip[UP_SLOTS / UP_PER_BANK];
+/* Main-loop consumers only: never accessed by the renderer or the audio ISR. */
+static up_rec_t up_read_cache;
+static const up_rec_t up_rec_none;
+#ifndef UP_HOST
+static void *up_stage(void);
+#endif
+static int up_bank_ok(const up_bank_t *bk, int len)
+{
+    return len >= 8 && bk->magic == UP_BANK_MAGIC && bk->nslot == UP_PER_BANK &&
+        (bk->rsize == sizeof(up_wire_t) || bk->rsize == UP_V1_SIZE) &&
+        len == (int)(8u + UP_PER_BANK*bk->rsize);
+}
+static void up_decode(const up_bank_t *bk, uint32_t k, up_rec_t *out)
+{
+    uint32_t i;
+    const uint8_t *raw;
+    memset(out, 0, sizeof *out);
+    if (!bk) return;
+    raw = (const uint8_t *)bk + 8u + (k % UP_PER_BANK)*bk->rsize;
+    memcpy(out, raw, 16);
+    if (bk->rsize == UP_V1_SIZE) {
+        if (raw[1] != 1u || raw[3] > 72u) { out->used = 0; return; }
+        for (i = 0; i < 72; i++) out->p[i] = (int16_t)((uint16_t)raw[16+2*i] | (uint16_t)raw[17+2*i] << 8);
+        memcpy(out->note, raw+160, 32);
+    } else {
+        const up_wire_t *r = (const up_wire_t *)raw;
+        if (r->ver != UP_VER) { out->used = 0; return; }
+        for (i = 0; i < UP_PMAX; i++) out->p[i] = r->p[i];
+        memcpy(out->note, r->note, 32);
+    }
+}
+static int up_encode(up_wire_t *out, const up_rec_t *r)
+{
+    uint32_t i;
+    memset(out, 0, sizeof *out);
+    if (!r || !r->used) return 0;
+    if (r->np > UP_PMAX) return 1;
+    for (i = 0; i < r->np; i++) if (r->p[i] < -128 || r->p[i] > 127) return 1;
+    memcpy(out, r, 16);
+    out->ver = UP_VER;
+    for (i = 0; i < r->np; i++) out->p[i] = (int8_t)r->p[i];
+    memcpy(out->note, r->note, 32);
+    return 0;
+}
 static const up_rec_t *up_rec(uint32_t k)
 {
-    const up_bank_t *bk = up_bank_xip[(k / UP_PER_BANK) % NELEM(up_bank_xip)];
-    return bk ? &bk->r[k % UP_PER_BANK] : &up_rec_none;
+    up_decode(k < UP_SLOTS ? up_bank_xip[k/UP_PER_BANK] : 0, k, &up_read_cache);
+    return &up_read_cache;
 }
-static void *up_stage(void);                                    /* project.c: the project buffer (main loop) */
-#endif
-
 static int up_valid(const up_rec_t *r)
 {
-    return r->used == UP_USED && r->ver == UP_VER && r->engine < NENGINES && r->np >= 8u && r->np <= UP_PMAX &&
-           r->name[0];
+    return r->used == UP_USED && (r->ver == 1u || r->ver == UP_VER) && r->engine < NENGINES &&
+        r->np >= 8u && r->np <= (r->ver == 1u ? 72u : UP_PMAX) && r->name[0];
 }
-
 static int up_used(uint32_t k) { return k < UP_SLOTS && up_valid(up_rec(k)); }
-
-static int up_bank_ok(const up_bank_t *bk, int len)   /* a bank of this layout, whole */
+#ifndef UP_HOST
+static void up_bank_find(uint32_t b)
 {
-    return len == (int)sizeof *bk && bk->magic == UP_BANK_MAGIC && bk->rsize == sizeof(up_rec_t) &&
-           bk->nslot == UP_PER_BANK;
-}
-#ifdef UP_HOST
-static void up_bank_check(uint32_t b, int len)  /* after loading bank b (len bytes, -1 = none): wrong shape -> empty */
-{
-    up_bank_t *bk = &up_bank[b];
-    if (!up_bank_ok(bk, len))
-        memset(bk, 0, sizeof *bk);
-}
-#else
-static void up_bank_find(uint32_t b)            /* bank b's current copy in the XIP window, or none (after a save too) */
-{
-    const void *p = 0;
-    uint32_t len = 0;
+    const void *p = 0; uint32_t len = 0;
 #if FELUCCA_FLASH
-    p = flash_ok ? st_xip(OBJ_UPRESET0 + b, &len) : 0;
+    p = flash_ok ? st_xip(OBJ_UPRESET0+b, &len) : 0;
 #endif
-    up_bank_xip[b % NELEM(up_bank_xip)] = p && up_bank_ok((const up_bank_t *)p, (int)len) ? (const up_bank_t *)p : 0;
+    up_bank_xip[b % NELEM(up_bank_xip)] = p && up_bank_ok(p, (int)len) ? p : 0;
 }
 #endif
+/* Convert a whole bank before touching flash; a torn save leaves the old v1
+ * or v2 sector readable. Invalid slots remain empty. */
+static int up_bank_convert(up_bank_t *dst, const up_bank_t *src)
+{
+    uint32_t i; up_rec_t r;
+    memset(dst, 0, sizeof *dst);
+    dst->magic = UP_BANK_MAGIC; dst->rsize = sizeof(up_wire_t); dst->nslot = UP_PER_BANK;
+    for (i = 0; i < UP_PER_BANK; i++) {
+        up_decode(src, i, &r);
+        if (up_valid(&r) && up_encode(&dst->r[i], &r)) return 1;
+    }
+    return 0;
+}
 
 /* the record's values in today's P_* order (mapped by count, see above); def = the defaults */
 static void up_params(const up_rec_t *r, int16_t *out, const int16_t *def)
@@ -203,17 +249,8 @@ static int up_put(uint32_t k, const up_rec_t *r)
     uint32_t b = (k / UP_PER_BANK) % NELEM(up_bank_xip), i;
     up_bank_t *bk = (up_bank_t *)up_stage();
     int rc = 3;
-    if (up_bank_xip[b])
-        memcpy(bk, up_bank_xip[b], sizeof *bk);
-    else
-        memset(bk, 0, sizeof *bk);
-    bk->magic = UP_BANK_MAGIC;
-    bk->rsize = sizeof(up_rec_t);
-    bk->nslot = UP_PER_BANK;
-    if (r)
-        bk->r[k % UP_PER_BANK] = *r;
-    else
-        memset(&bk->r[k % UP_PER_BANK], 0, sizeof(up_rec_t));
+    if (up_bank_convert(bk, up_bank_xip[b])) return 1;
+    if (up_encode(&bk->r[k % UP_PER_BANK], r)) return 1;
     if (!r)
         for (i = 0; i < NTRK; i++)
             if (trk[i].user == k + 1u)

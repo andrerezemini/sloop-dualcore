@@ -20,7 +20,8 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 /* SLOOP 2.4: FM6 (eng_fm6.c) is engine 9 in every build; SLICE, when built, comes last (10). Projects and user
  * presets store the engine index as a byte, and no shipped SLOOP was built with SLICE, so its number is stored
  * nowhere: FM6 may take 9 and SLICE moves up (engines.c ENGINES[], params.c N_ENGNAME follow this order) */
-#define NENGINES (12 + FELUCCA_SLICE)
+#define NENGINES (13 + FELUCCA_SLICE)
+#define ENGI_TERRAIN (12u + FELUCCA_SLICE)
 #define ENGI_GRAIN 8u            /* GRAIN, PHYS, NOISE (SLOOP 2.5, appended after FM6: the stores keep the numbers) */
 #define ENGI_PHYS 10u
 #define ENGI_NOISE 11u
@@ -70,6 +71,10 @@ enum {                          /* per-track parameters */
     P_FTYPE,                                   /* ANALOG's filter TYPE: LP (as before) / BP / HP (eng_analog.c) */
     P_ESYNC,                                   /* ENV SYNC: ATK DEC REL as note values of the tempo (voice.c) */
     P_LSYNC, P_LTRIG, P_LPOL,                  /* LFO 2: SYNC to the tempo, TRIG (NOTE / FREE), POL (BI / UNI) (voice.c) */
+    /* synth: append common parameters here; old records map the last eight by count. */
+    P_M1SRC, P_M1DST, P_M1AMT, P_M2SRC, P_M2DST, P_M2AMT,
+    P_M3SRC, P_M3DST, P_M3AMT, P_M4SRC, P_M4DST, P_M4AMT,
+    P_L2RATE, P_L2WAVE, P_L2SYNC, P_L2PHS, P_TRES, P_TFTYPE,
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_COUNT
 };
@@ -94,9 +99,14 @@ enum {                          /* global parameters */
     G_TXRATE, G_TXWHEN, G_TXDUCK,           /* its source, level, tone, movement; its rate, when it plays, the DUCK pump.
                                              * In a project (project.c: the spare bytes) */
     G_BEND,                     /* SLOOP 2.6, GLO > MIDI 2: the pitch bend's range, 1..12 semitones (a setting of the FM-1) */
+    G_RTYPE,                    /* synth: 0 legacy FDN, 1 ROOM, 2 SPRING, 3 HALL */
     G_COUNT
 };
 
+/* Stored matrix IDs are append-only (Felucca's source/destination order). */
+enum { MS_OFF, MS_LFO, MS_ENV, MS_VEL, MS_KEY, MS_RAND, MS_MODW, MS_AT, MS_EXPR, MS_SH, MS_SLEW, MS_LFO2, MS_N };
+enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY, MD_REV, MD_RATE, MD_VIB, MD_E1,
+       MD_DEPTH = MD_E1 + 8, MD_VEL, MD_TIME, MD_N };
 /* ----------------------------------------------------------- voices --- */
 typedef struct {
     uint8_t note, vel, gate, active;
@@ -112,6 +122,8 @@ typedef struct {
     uint32_t ph[3];
     int32_t s[8];                /* engine state (filters, envs) */
     uint32_t age;
+    int16_t mrnd;               /* per-note matrix RAND; independent of engine noise */
+    uint8_t mvel;               /* velocity before unison attenuation */
 } voice_t;
 
 typedef struct {                 /* per-voice control-rate modulation, computed in voice.c */
@@ -137,6 +149,7 @@ typedef struct {
     uint8_t pat;                 /* sequence pattern (PATTERNS[pat - 1]), loaded only into an empty sequencer */
     int8_t x[8];                 /* more of the patch: up to 4 (track parameter id + 1, value) pairs, 0 = none
                                   * (glide, pitch / LFO modulation, voice mode...: preset_extras) */
+    uint8_t rtype;               /* 0 keep bus type, else G_RTYPE + 1 (fills old padding) */
 } preset_t;
 #define FX(d, c, dl, r) .fx = {(d) + 1, (c) + 1, (dl) + 1, (r) + 1}
 #define ARP(m, rt, o, g) .arp = {(m) + 1, (rt) + 1, (o) + 1, (g) + 1}
@@ -218,6 +231,13 @@ typedef struct track {
     int32_t lfo_val;             /* Q15 */
     int32_t lfo_fade;            /* Q15 ramp after note-on */
     uint32_t lfo_rnd;
+    uint32_t mod_seed, mod_hold_seed;
+    int32_t lfo_prev, mod_hold, m_env;
+    int16_t m_rnd;
+    uint8_t mw, at, ex_off, m_vel, m_key, m_vi;
+    uint32_t lfo2_ph, lfo2_rnd;
+    int32_t lfo2_val, lfo2_fade;
+    const int16_t *rp;           /* audio-only view; UI always reads/writes p[] */
     /* keyboard / arp input: held notes in press order */
     uint8_t held[16];
     uint8_t nheld;
@@ -307,6 +327,8 @@ typedef struct {
 
 static track_t trk[NTRK];        /* the instrument: three parts and the drum track */
 static song_t song;
+static const int16_t *render_p(const track_t *t) { return t->rp ? t->rp : t->p; }
+
 
 /* The transport clock (seq.c runs it). One unit = one sample at 1 BPM: a beat is BEAT_U units at any
  * tempo, and every division of it (1/4 .. 1/64, the triplets) is a whole number of units. The steps

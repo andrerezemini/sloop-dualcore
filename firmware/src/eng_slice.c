@@ -232,7 +232,7 @@ static int16_t *slc_rb(track_t *t, voice_t *v)
 
 static void slice_note_on(track_t *t, voice_t *v)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t src = (uint32_t)p[P_E0] & 3u, div = (uint32_t)clamp(p[P_E1], 0, SLC_DIV_AUTO), rev = p[P_E5] != 0;
     uint32_t a, b, st, n;
     int32_t j;
@@ -324,7 +324,7 @@ static inline int slc_rev(const slc_src_t *s, voice_t *v, int16_t *rb, int loop,
 /* the ADSR (ONE: no release), DECAY, the fade at the slice end */
 static int32_t slice_amp(track_t *t, voice_t *v, int32_t adsr)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     if (p[P_E4] == SLC_ONE && v->stage == 3u)
         v->stage = 2;                                   /* ONE: the slice plays to its end */
     if (p[P_E6] < 127) {
@@ -337,7 +337,7 @@ static int32_t slice_amp(track_t *t, voice_t *v, int32_t adsr)
 
 static void slice_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t pk = (uint32_t)v->s[4], i, frac = v->ph[1], rev = (pk >> 6) & 1u, stepq, rem;
     int32_t lp = 4000 + ((clamp((p[P_E7] << 8) + m->cutoff, 0, 127 << 8) * 28767) >> 15), x;
     int loop = p[P_E4] == SLC_LOOP && v->gate;

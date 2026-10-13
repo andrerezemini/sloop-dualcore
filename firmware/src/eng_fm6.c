@@ -228,7 +228,7 @@ static void fm6_poll(void)
 static void fm6_sync(const track_t *t)
 {
     uint32_t tr = (uint32_t)(t - trk), k, j, car, n = 0;
-    const int16_t *e = &t->p[P_E0];
+    const int16_t *e = &render_p(t)[P_E0];
     int32_t meg, step;
     if (tr >= NPART)
         return;
@@ -336,11 +336,11 @@ static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const
         fm6_note_key(n, p, 0);
     lf = fm6_note_logfreq(m->pitch16 + (p[FP_TRNSP] - 24) * 16, m->fine);
     fb = clamp(fm6_eff[tr].fb + ((m->shape - (64 << 8)) >> 11), 0, 7);
-    lvl = clamp(t->p[P_E2], -64, 63) * 24 + clamp(m->cutoff >> 8, -150, 150) * 16;   /* microsteps */
+    lvl = clamp(render_p(t)[P_E2], -64, 63) * 24 + clamp(m->cutoff >> 8, -150, 150) * 16;   /* microsteps */
     if (!fm6_note_compute(n, p, bus, P->bus, fm6_lfo_v[tr], fm6_lfo_d[tr], lf, fm6_eff[tr].alg, fb, fm6_eff[tr].dt, lvl << 16))
         return;                                         /* every carrier below the threshold */
     /* the voice's amplitude ramp x VOICE_FS (one carrier at full: VOICE_FS / 2), six voices in unison ~ one */
-    k = t->p[P_VOICE] == V_UNISON ? VOICE_FS * 2 / 5 : VOICE_FS;
+    k = render_p(t)[P_VOICE] == V_UNISON ? VOICE_FS * 2 / 5 : VOICE_FS;
     a = mulq15(m->amp0, k);
     da = (mulq15(m->amp1, k) - a) >> FM6_LG_N;
     for (i = 0; i < FM6_N; i++) {

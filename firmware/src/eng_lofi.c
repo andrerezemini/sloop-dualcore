@@ -47,14 +47,15 @@ static const char *const N_DCY[] = {"CONST", "D0", "D1", "D2", "D3", "D4", "D5",
 static const param_desc_t LOFI_WAVNUM = {"WAV#", F_INT, 0, 127, 64, N_WRAM, 0};   /* = edit[2] but the names */
 static const param_desc_t LOFI_DCY = {"DCY", F_INT, 0, 127, 0, N_DCY, 0};        /* = edit[3] but the names */
 
-static const param_desc_t *lofi_desc(const track_t *t, uint32_t k)
+static const param_desc_t *lofi_desc_values(const int16_t *p, uint32_t k)
 {
-    if (k == 2u && t->p[P_E1] == RW_WRAM)
+    if (k == 2u && p[P_E1] == RW_WRAM)
         return &LOFI_WAVNUM;
-    if (k == 3u && t->p[P_E0] == CHIP_STEP)
+    if (k == 3u && p[P_E0] == CHIP_STEP)
         return &LOFI_DCY;
     return 0;
 }
+static const param_desc_t *lofi_desc(const track_t *t, uint32_t k) { return lofi_desc_values(t->p,k); }
 
 /* the stepped envelope: volume 15..0 in v->s[6] bits 0..3, its divider in bits 4..7, a 240 Hz
  * frame clock (Q16 phase in v->s[7]); each frame the divider counts down and, at 0, reloads the
@@ -80,8 +81,8 @@ static void lofi_note_on(track_t *t, voice_t *v)
  * (about the REL time; REL 0 cuts at once) or a one-shot decay has reached 0. */
 static int32_t lofi_amp(track_t *t, voice_t *v, int32_t adsr)
 {
-    int32_t b = t->p[P_E3] >> 2, vol = v->s[6] & 15, div = (v->s[6] >> 4) & 15;
-    if (t->p[P_E0] != CHIP_STEP)
+    int32_t b = render_p(t)[P_E3] >> 2, vol = v->s[6] & 15, div = (v->s[6] >> 4) & 15;
+    if (render_p(t)[P_E0] != CHIP_STEP)
         return adsr;
     if (!v->active)                                     /* the ADSR ended it (or the voice was given up) */
         return 0;
@@ -117,7 +118,7 @@ static int32_t lofi_amp(track_t *t, voice_t *v, int32_t adsr)
 static void lofi_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     static const uint8_t STEP_DUTY[4] = {1, 2, 4, 6};   /* eighths: 12.5 / 25 / 50 / 75 % */
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t chip = (uint32_t)p[P_E0], wave = (uint32_t)p[P_E1], i;
     uint32_t stepc = chip == CHIP_STEP;
     uint32_t duty = stepc ? 0x20000000u * STEP_DUTY[(p[P_E2] / 32) & 3]

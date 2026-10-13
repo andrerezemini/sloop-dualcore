@@ -268,7 +268,7 @@ static void trio_note_on(track_t *t, voice_t *v)
 
 static void trio_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     const trio_set_t *ws = &TRIO_SETS[(uint32_t)p[P_E0] & 15u];
     uint32_t w1 = ws->w[0], w2 = ws->w[1], w3 = ws->w[2], i;
     uint32_t ring = ws->flags & TRIO_RING, sync = ws->flags & TRIO_SYNC;

@@ -807,6 +807,25 @@ static job_t *add(uint32_t kind, const char *name)
     return j;
 }
 
+/* Keep full-profile render IDs when lite omits factory presets. The sample
+ * set IDs and the audio of every retained preset must remain identical. */
+static uint32_t golden_preset_index(uint32_t e, uint32_t pi)
+{
+#if SMP_SAMPLES_LITE
+    if (e == 4u && pi >= 5u) return pi + 2u;
+    if (e == ENGI_GRAIN && pi >= 2u) return pi + 1u;
+#endif
+    return pi;
+}
+static int golden_profile_omits(const char *name)
+{
+#if SMP_SAMPLES_LITE
+    return !strcmp(name,"preset/SAMPLE/05_LOFI_FLUTE") || !strcmp(name,"preset/SAMPLE/06_SCRATCH") ||
+           !strcmp(name,"preset/GRAIN/02_FLUTE_DUST");
+#else
+    (void)name; return 0;
+#endif
+}
 int main(int argc, char **argv)
 {
     const char *gpath = argc > 1 ? argv[1] : "tests/golden.txt";
@@ -835,7 +854,7 @@ int main(int argc, char **argv)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
-            snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
+            snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, golden_preset_index(e, pi), s);
             j = add(J_PRESET, name);
             j->e = (uint8_t)e;
             j->pi = (uint8_t)pi;
@@ -891,7 +910,7 @@ int main(int argc, char **argv)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
-            snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
+            snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, golden_preset_index(e, pi), s);
             j = add(J_CPU, name);
             memset(cpu_parts[ncpu], 0, sizeof cpu_parts[ncpu]);
             cpu_parts[ncpu][0][0] = (uint8_t)e;
@@ -1009,7 +1028,7 @@ int main(int argc, char **argv)
         uint32_t k, found = 0;
         for (k = g0; k < g1 && !found; k++)
             found = !strcmp(J[k].name, gold[i].name);
-        if (!found) {
+        if (!found && !golden_profile_omits(gold[i].name)) {
             if (!gupd)
                 printf("regress: GOLDEN GONE  %s (no such render now)\n", gold[i].name);
             g_gone++;

@@ -64,10 +64,11 @@ static const param_desc_t *const PHYS_DESC[PM_COUNT][8] = {
     [PM_SYMP] = {0, &PHYS_D_CHRD, 0, 0, &PHYS_D_SYMP, 0, &PHYS_D_BUZZ, 0},
 };
 
-static const param_desc_t *phys_desc(const track_t *t, uint32_t k)
+static const param_desc_t *phys_desc_values(const int16_t *p, uint32_t k)
 {
-    return k < 8u ? PHYS_DESC[(uint32_t)t->p[P_E0] % PM_COUNT][k] : 0;
+    return k < 8u ? PHYS_DESC[(uint32_t)p[P_E0] % PM_COUNT][k] : 0;
 }
+static const param_desc_t *phys_desc(const track_t *t, uint32_t k) { return phys_desc_values(t->p,k); }
 
 /* SYMP: the sympathetic strings above the note, cents (CHRD's names) */
 static const int16_t PHYS_CHORDS[7][PX_NSYMP] = {
@@ -87,7 +88,7 @@ _Static_assert(sizeof(px_modal_t) <= sizeof(px_string_t), "a small PHYS slot hol
 static uint8_t phys_lay[NPART];          /* 1 + the layout the slots are in (0 small, 1 SYMP), 0 = none yet */
 static uint32_t phys_poly(const track_t *t)
 {
-    return (uint32_t)t->p[P_E0] % PM_COUNT == PM_SYMP ? 2u : 3u;
+    return (uint32_t)render_p(t)[P_E0] % PM_COUNT == PM_SYMP ? 2u : 3u;
 }
 static phys_slot_t *phys_slot_of(track_t *t, voice_t *v)
 {
@@ -97,7 +98,7 @@ static phys_slot_t *phys_slot_of(track_t *t, voice_t *v)
         return 0;
     p = (uint32_t)(t - trk);
     i = (uint32_t)(v - t->v);
-    big = (uint32_t)t->p[P_E0] % PM_COUNT == PM_SYMP;
+    big = (uint32_t)render_p(t)[P_E0] % PM_COUNT == PM_SYMP;
     if (i >= phys_poly(t))
         return 0;
     a = (uint8_t *)eng_arena_of(t, ENGI_PHYS);
@@ -134,7 +135,7 @@ static void phys_reset(phys_slot_t *S, uint32_t md, uint32_t seed)
 static void phys_note_on(track_t *t, voice_t *v)
 {
     phys_slot_t *S = phys_slot_of(t, v);
-    uint32_t md = (uint32_t)t->p[P_E0] % PM_COUNT;
+    uint32_t md = (uint32_t)render_p(t)[P_E0] % PM_COUNT;
     if (!S)
         return;
     if ((!v->env && !v->env_out) || S->model != md)     /* a fresh voice (not a retrigger): from rest */
@@ -153,18 +154,18 @@ static void phys_note_on(track_t *t, voice_t *v)
 /* SYMP: the sympathetic strings' pitches (cycles Q32) by CHRD: a chord above the note, or ROOT */
 static __attribute__((noinline)) void phys_symp_pitches(const track_t *t, const vmod_t *m, uint32_t *f)
 {
-    uint32_t c = (uint32_t)t->p[P_E1] >> 4, k;          /* 0..7 */
+    uint32_t c = (uint32_t)render_p(t)[P_E1] >> 4, k;          /* 0..7 */
     for (k = 0; k < PX_NSYMP; k++) {
         int32_t p16 = PHYS_DETUNE[k];
         p16 += c < 7u ? m->pitch16 + ((PHYS_CHORDS[c][k] * 41) >> 8)   /* cents -> 1/16 semitones (0.16) */
-                      : (48 + t->p[P_ROOT] + (k == 1u ? 7 : k == 2u ? 12 : 0)) * 16;
+                      : (48 + render_p(t)[P_ROOT] + (k == 1u ? 7 : k == 2u ? 12 : 0)) * 16;
         f[k] = pitch_inc(clamp(p16, 0, 2047));
     }
 }
 
 static void phys_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     phys_slot_t *S = phys_slot_of(t, v);
     uint32_t md = (uint32_t)p[P_E0] % PM_COUNT, i, f0 = m->inc;
     int32_t y[CTL], ax[CTL];

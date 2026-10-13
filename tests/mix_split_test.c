@@ -29,8 +29,8 @@
 #define BLOCKS 1500u                                     /* ~2.2 s at 44.1 kHz */
 static const int32_t MASKS[] = {0, -1, 1, 2, 4, 8, 3, 5, 12, 7, 15};
 static const int32_t MASKS_QUICK[] = {0, 15, -1};
-static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix", "fx26"};
-#define NSCENE 5u
+static const char *const SCENE_NAME[] = {"formant3", "fm6x3", "phys_lfo", "mix", "fx26", "matrix", "hall", "ladder8", "terrain"};
+#define NSCENE 9u
 
 static void drums_pattern(void)                          /* kick 4 on the floor, snare 4 / 12, hats, a clap */
 {
@@ -92,6 +92,27 @@ static void scene_setup(uint32_t s)
             trk[k].p[P_LRATE] = (int16_t)(110 + 5 * k);
             trk[k].p[P_LD_PIT] = 40;
             chords(&trk[k], k, 4, 50 + 4 * k);
+        }
+        break;
+    case 5: case 6: case 7: case 8:
+        for (k=0;k<NPART;k++) {
+            track_t *t=&trk[k];
+            host_preset(t, s==8 ? ENGI_TERRAIN : 0, s==8 ? k : 0);
+            t->p[P_M1SRC]=MS_RAND;t->p[P_M1DST]=MD_E1+4;t->p[P_M1AMT]=25;
+            t->p[P_M2SRC]=MS_LFO2;t->p[P_M2DST]=MD_PAN;t->p[P_M2AMT]=20;
+            t->p[P_M3SRC]=MS_SH;t->p[P_M3DST]=MD_CUT;t->p[P_M3AMT]=20;
+            t->p[P_M4SRC]=MS_VEL;t->p[P_M4DST]=MD_REV;t->p[P_M4AMT]=12;
+            t->p[P_L2RATE]=80;t->p[P_L2WAVE]=4;t->p[P_L2SYNC]=8;
+            t->p[P_LRATE]=110;t->p[P_REV]=70;
+            if(s==7){t->p[P_FTYPE]=3;t->p[P_E5]=112;t->p[P_TFLT]=-36;t->p[P_TRES]=40;t->p[P_TFTYPE]=1;}
+            chords(t,k,4,48+5*k);
+        }
+        if(s==6||s==7) song.g[G_RTYPE]=3;
+        if(s==7) {
+            /* Eight simultaneous ANALOG LP24 voices in one part. */
+            for(k=1;k<NPART;k++)steps_clear(&trk[k]);
+            trk[0].p[P_VOICE]=V_UNISON;
+            TDRUM->p[P_TFLT]=-45;TDRUM->p[P_TFTYPE]=1;TDRUM->p[P_TRES]=30;
         }
         break;
     case 4:

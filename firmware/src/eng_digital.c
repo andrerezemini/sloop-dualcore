@@ -29,7 +29,7 @@ static inline uint32_t digital_mod(int32_t x, int32_t idx) { return (uint32_t)(x
 
 static void digital_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t alg = (uint32_t)p[P_E0] & 7u, i;
     uint32_t i1 = m->inc;
     uint32_t i2 = fm_ratio_inc(m->inc, RATIO_Q8[p[P_E1] % 15]), i3 = fm_ratio_inc(m->inc, RATIO_Q8[p[P_E2] % 15]);

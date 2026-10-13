@@ -217,7 +217,7 @@ static void graph_lfo(const track_t *t, uint16_t c)
     int32_t x, py = 50;
     uint32_t ph = (uint32_t)t->p[P_LPHASE] << 25;
     for (x = 0; x < 240; x++) {                      /* (lfo_wave only reads the track) */
-        int32_t y = 50 - lfo_wave((track_t *)t, ph + (uint32_t)x * (0xFFFFFFFFu / 120u)) * 38 / 32768;
+        int32_t y = 50 - lfo_wave(t, ph + (uint32_t)x * (0xFFFFFFFFu / 120u), t->p[P_LWAVE]) * 38 / 32768;
         if (t->p[P_LWAVE] == 4)
             y = 50 - ((int32_t)((x / 20 * 2654435761u) >> 16) - 32768) * 38 / 32768;
         if (x)
@@ -848,6 +848,9 @@ static void draw_columns(void)
             int16_t *vp;
             const param_desc_t *d = home_param(c, &vp);
             param_format(d, *vp, val, &unit);
+            if (cur_page()->scope == SC_TRACK && cur_page()->id[c] >= P_M1DST &&
+                cur_page()->id[c] <= P_M4DST && (cur_page()->id[c]-P_M1DST)%3u == 0)
+                str_cpy(val, mod_dst_name(TSEL, *vp), 6);
             draw_column(c, d->label, val, unit, VAL(c), RATIO(d, *vp), param_icon(d, *vp));
         }
         return;

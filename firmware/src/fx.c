@@ -12,14 +12,60 @@ static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 #define REV_MOD 12               /* samples the modulated line moves (+-) */
 static const uint16_t REV_LINE[4] = {1559, 1931, 2389, 2791};   /* 35..63 ms, coprime */
 static const uint16_t REV_AP[2] = {556, 441};
-static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2] __attribute__((section(".lowram")));   /* (the pool is
-                                                                      * full; .lowram: the SRAM below the RAM region, app.ld) */
-static int16_t rev_ap[556 + 441] __attribute__((section(".pool")));
+/* Felucca 1.5.6 ROOM / SPRING / HALL (Leo Kuroshita, GPL-3.0-only),
+ * adapted for the SLOOP stereo buses. Type 0 remains the original FDN. */
+static const uint16_t REV_COMB[4] = {1116, 1188, 1277, 1356};
+#define SP_LEN 4096u
+#define SP_MASK (SP_LEN - 1u)
+#define SP_N 10u
+#define SP_A 2867
+#define HL_NL 8u                         /* lines */
+#define HL_NAP 2u                        /* diffusers */
+#define HL_NC (CTL / 2u)                 /* a block at half the rate */
+#define HL_MOD 8                         /* the taps' swing, samples (read 2 .. 18 samples short of the end) */
+#define HL_LPM 0x69u                     /* the lines with a low-pass */
+#define HL_KD(d) (32767 - (d) * 180)     /* its coefficient (Q15) for DAMP d: none at 0 .. ~1 kHz at 127 */
+#define HL_LOUD 32                       /* a line this loud (two samples' sum) rounds its gain to the nearest */
+#define HL_OUT 4                         /* the outputs' gain: the level of ROOM's tail */
+static const uint16_t HL_LEN[HL_NL] = {467, 509, 547, 593, 631, 673, 709, 743};   /* (+1 each: the mirror) */
+static const uint16_t HL_AP[HL_NAP] = {131, 307};
+static const int16_t HL_APG[HL_NAP] = {11469, 10240};               /* Q14: 0.7, 0.625 */
+typedef struct {                          /* HALL's state (in the pool: no .bss) */
+    uint16_t i[HL_NL], d[HL_NAP];        /* the lines' write indices, the diffusers' */
+    int32_t lp[HL_NL], le[HL_NL];        /* the low-passes and their steps' remainders */
+    int32_t x, m, s, hp, he;             /* the send's last sample, its low cut and that step's remainder; the
+                                          * last mid and side out (half rate) */
+    int16_t g[HL_NL], sz;                /* the lines' gains / sqrt(7) (Q14), for SIZE sz - 1 (0: none yet) */
+    uint32_t ph;                         /* the taps' drift */
+    uint8_t side;                        /* sd holds this block's stereo difference (HALL running) */
+    int32_t sd[CTL];                     /* the block's left minus right (mix_block: rev_side_mix) */
+    int32_t bx[HL_NC], l[HL_NC], r[HL_NC];   /* the block at half the rate: the diffused send, left, right */
+    int16_t y[HL_NL][HL_NC];             /* the lines' ends, then what goes back into them */
+} hall_t;
+static union {
+    int16_t fdn[1559 + 1931 + 2389 + 2791 + REV_MOD + 2];
+    struct { int16_t comb[1116 + 1188 + 1277 + 1356]; hall_t hall; } models;
+} rev_mem __attribute__((section(".lowram")));
+static union { int16_t ap[556 + 441]; int32_t sp[(556 + 441) / 2]; } rev_u __attribute__((section(".pool")));
+#define rev_line (rev_mem.fdn)
+#define rev_comb (rev_mem.models.comb)
+#define rev_hl (rev_mem.models.hall)
+#define rev_ap (rev_u.ap)
+#define rev_side (rev_hl.sd)
+_Static_assert(sizeof rev_mem == sizeof rev_line, "all models share the legacy FDN memory");
+_Static_assert(sizeof rev_comb / 2u >= SP_LEN && sizeof rev_u.sp / 4u >= 4u * (SP_N + 1u), "SPRING buffers");
+_Static_assert(467 + 509 + 547 + 593 + 631 + 673 + 709 + 743 + HL_NL <= sizeof rev_comb / 2u &&
+               131 + 307 <= sizeof rev_u.ap / 2u, "HALL in ROOM's buffers");
+_Static_assert(CTL % 2u == 0u && HL_NC + 2u * HL_MOD + 2u < 467u && HL_NC <= 131u, "HALL: one wrap a block at most");
 static struct {
     uint32_t dly_w, cho_w, cho_ph, rev_ph;
     int32_t dly_lp;
     uint16_t line_i[4], ap_i[2];
     int32_t line_lp[4];
+    uint16_t comb_i[4], sp_w;
+    int32_t comb_lp[4], sp_lp, sp_hp, sp_he, sp_size;
+    uint32_t sp_ph;
+    uint8_t rtype;
 } fx;
 static volatile uint8_t rev_frz;         /* punch-in FREEZE (punch.c): the reverb holds, no loss, no damping */
 static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this block (FREEZE plays it) */
@@ -29,7 +75,7 @@ static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this bloc
  * make-up gain. State per part (track_t dist_*). */
 static void track_dist(track_t *t, int32_t *b, uint32_t n)
 {
-    int32_t d = t->p[P_DIST], i, g, k, mk, bias = 2400, b0;
+    int32_t d = render_p(t)[P_DIST], i, g, k, mk, bias = 2400, b0;
     if (!d) {
         t->dist_on = 0;
         return;
@@ -72,7 +118,11 @@ typedef struct {
  * (a sawtooth at the bass's pitch with a corner at every block: tones around 1.4 kHz and up) */
 #define LIM_HOLD 48u
 #define LIM_REL 11                      /* the release after the hold: ~46 ms (12 before the hold: ~93 ms; the same loudness) */
+#if FELUCCA_BOOT_BSS
+static lim_t lim_dac, lim_usb;
+#else
 static lim_t lim_dac = {.env = LIM_T, .g = 32768}, lim_usb = {.env = LIM_T, .g = 32768};
+#endif
 /* l, r: n (<= CTL) samples in; out: the n samples of CTL before, limited (before the knee) */
 static void lim_block(lim_t *s, int32_t *l, int32_t *r, uint32_t n)
 {
@@ -196,6 +246,271 @@ static uint32_t delay_samples(void)
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
+/* ROOM (G_RTYPE 1): 4 damped combs + 2 allpasses (Freeverb-like, mono), added to out */
+static __attribute__((noinline)) void rev_room(const int32_t *rev_in, int32_t *out, uint32_t n)
+{
+    uint32_t i, k;
+    int32_t size = rev_frz ? 32768 : 25000 + song.g[G_RSIZE] * 50, damp = rev_frz ? 32767 : 32767 - song.g[G_RDAMP] * 200;
+    for (i = 0; i < n; i++) {
+        int32_t a = 0;
+        int16_t *c = rev_comb;
+        int32_t in = mulq15(rev_in[i], 2580);           /* 1/8 at -4 dB: level as before the allpass fix */
+        for (k = 0; k < 4u; k++) {
+            int32_t o = c[fx.comb_i[k]];
+            fx.comb_lp[k] = o + mulq15(fx.comb_lp[k] - o, 32767 - damp);
+            c[fx.comb_i[k]] = (int16_t)clamp(in + mulq15(fx.comb_lp[k], size), -32768, 32767);
+            if (++fx.comb_i[k] >= REV_COMB[k])
+                fx.comb_i[k] = 0;
+            a += o;
+            c += REV_COMB[k];
+        }
+        c = rev_ap;
+        for (k = 0; k < 2u; k++) {
+            int32_t o = c[fx.ap_i[k]];
+            int32_t v = a + (o >> 1);
+            c[fx.ap_i[k]] = (int16_t)clamp(v, -32768, 32767);
+            a = o - a;                                  /* Freeverb: out = buf - in (o - v is a notch comb) */
+            if (++fx.ap_i[k] >= REV_AP[k])
+                fx.ap_i[k] = 0;
+            c += REV_AP[k];
+        }
+        out[i] += a;
+    }
+}
+
+/* SPRING (see the top), added to out */
+static __attribute__((noinline)) void rev_spring(const int32_t *rev_in, int32_t *out, uint32_t n)
+{
+    uint32_t i, k, s = (uint32_t)song.g[G_RSIZE];
+    int32_t g = rev_frz ? 32768 : 19661 + (int32_t)s * 85;                /* the loop's gain: 0.6 .. 0.93 */
+    int32_t kl = 26000 - song.g[G_RDAMP] * 160;         /* its low-pass: ~9 kHz .. ~1.3 kHz */
+    int32_t len = (int32_t)(1323u + ((s * 1323u) >> 7)) << 8, L, L2, L3, f, w;
+    int16_t *ln = rev_comb;
+    int32_t *ap = rev_u.sp;
+    if (!fx.sp_size)
+        fx.sp_size = len;
+    fx.sp_size += clamp(len - fx.sp_size, -256, 256);   /* SIZE glides (a sample a block at most) */
+    L = fx.sp_size >> 8;
+    fx.sp_ph += 2u * LFO_INC[24];                       /* the wobble: a slow sine, 1.5 samples deep */
+    w = (fx.sp_size >> 1) + ((osc_sine(fx.sp_ph) * 3) >> 8);   /* the far end, Q8 */
+    L2 = w >> 8;
+    f = w & 255;
+    L3 = (L * 3) >> 2;
+    for (i = 0; i < n; i++) {
+        uint32_t wp = fx.sp_w, j = (wp & 3u) * (SP_N + 1u);
+        int32_t x = mulq15(rev_in[i], 2580), r = ln[(wp - (uint32_t)L) & SP_MASK], p, o;
+        int32_t t0 = ln[(wp - (uint32_t)L2) & SP_MASK], t1 = ln[(wp - (uint32_t)L2 - 1u) & SP_MASK];
+        fx.sp_lp += mulq15(r - fx.sp_lp, kl);
+        o = fx.sp_lp * g;
+        x += (o + ((o >> 31) & 32767)) >> 15;           /* towards 0: a loop of floors would hold an offset */
+        o = x - fx.sp_hp + fx.sp_he;                    /* the low cut, its step's remainder kept (as */
+        fx.sp_he = o & 63;                              /* dc_block): no dead band to hold an offset in the loop */
+        fx.sp_hp += o >> 6;
+        x -= fx.sp_hp;
+        p = ap[j];                                      /* the chain: ap[j + k], stage k's output 4 samples ago */
+        ap[j] = x;
+        for (k = 1; k <= SP_N; k++) {                   /* (lossless: bounded by the loop's input, no clamp) */
+            int32_t v = (x - ap[j + k]) * SP_A;         /* towards 0, as the loop's gain: floors would feed */
+            o = ap[j + k];                              /* the loop a little offset and noise for ever */
+            x = ((v + ((v >> 31) & 4095)) >> 12) + p;
+            p = o;
+            ap[j + k] = x;
+        }
+        ln[wp & SP_MASK] = (int16_t)clamp(x, -32768, 32767);
+        fx.sp_w = (uint16_t)(wp + 1u);
+        out[i] += (t0 + (((t1 - t0) * f) >> 8)) * 4 + ln[(wp - (uint32_t)L3) & SP_MASK] * 2;
+    }
+}
+
+/* HALL's helpers: m / 2^sh rounded towards zero (a product that feeds back must not floor: a loop of floors
+ * holds an offset and a little noise for ever) */
+static inline int32_t sh_tz(int32_t m, uint32_t sh) { return (m + ((m >> 31) & ((1 << sh) - 1))) >> sh; }
+/* 2^-x, x Q16 (0 .. 16): Q15 (32768 at x = 0). 2^-x = 2^u / 2^(i + 1), u = 1 - frac(x); 2^u by a cubic (1e-4) */
+static uint32_t exp2_neg(uint32_t x)
+{
+    uint32_t i = x >> 16, u = 32768u - ((x & 0xFFFFu) >> 1), p = 2579u;
+    p = ((p * u) >> 15) + 7409u;
+    p = ((p * u) >> 15) + 22780u;
+    p = ((p * u) >> 15) + 32768u;
+    return i < 15u ? p >> (i + 1u) : 0u;
+}
+/* the lines' gains for SIZE s: RT60 = 0.5 s * 2^(s / 30); a line of D samples (22.05 kHz) loses 60 dB in
+ * RT60 * 22050 / D passes: g = 2^(-D * 3 log2(10) / (22050 * RT60)) = 2^(-D * 59.2 / 65536 * 2^(-s / 30)),
+ * at most 0.99, over sqrt(7) (the matrix's rows have 7 entries of +-1: / sqrt(7) makes it orthogonal) */
+static __attribute__((noinline)) void hall_gains(int32_t s)
+{
+    uint32_t q = exp2_neg((uint32_t)s * 65536u / 30u), k, g;
+    for (k = 0; k < HL_NL; k++) {
+        g = exp2_neg((HL_LEN[k] * 59u * q) >> 15);
+        rev_hl.g[k] = (int16_t)(((g > 32440u ? 32440u : g) * 6193u) >> 15);
+    }
+    rev_hl.sz = (int16_t)(s + 1);
+}
+
+/* an allpass diffuser over x[0 .. n) from q (its next samples, no wrap): its state rounded towards zero */
+static inline void hall_ap(int16_t *q, int32_t g, int32_t *x, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t y = q[i], v = x[i] + sh_tz(y * g, 14);
+        q[i] = (int16_t)clamp(v, -32768, 32767);
+        x[i] = y - ((v * g + 8192) >> 14);
+    }
+}
+/* a line's end over y[0 .. n) from b (no wrap; b[n] is still the line's: its mirror at the end): between b[i]
+ * and b[i + 1], f / 256 of the way (rounded to the nearest: it stays between the two), times its gain g (Q14).
+ * The gain's product: rounded to the nearest while the line is loud (lo 0: the tail decays as it should; a
+ * truncation would make it die early, the sooner the quieter), towards zero once it is quiet (lo 1: the last
+ * steps of the tail, which then ends in exact silence) */
+static inline void hall_end(const int16_t *b, int32_t f, int16_t *y, uint32_t n, int32_t g, int lo)
+{
+    uint32_t i;
+    if (lo)
+        for (i = 0; i < n; i++)
+            y[i] = (int16_t)sh_tz((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g, 14);
+    else
+        for (i = 0; i < n; i++)
+            y[i] = (int16_t)(((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g + 8192) >> 14);
+}
+/* a line's end over y[0 .. n) from b (no wrap), through the low-pass (kd, Q15; the state *lp and its step's
+ * remainder *le), times its gain g (rounded as hall_end's) */
+static inline void hall_end_lp(const int16_t *b, int16_t *y, uint32_t n, int32_t g, int lo, int32_t *lp, int32_t *le,
+                               int32_t kd)
+{
+    uint32_t i;
+    int32_t l = *lp, r = *le, e;
+    if (lo)
+        for (i = 0; i < n; i++) {
+            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
+            y[i] = (int16_t)sh_tz(l * g, 14);
+        }
+    else
+        for (i = 0; i < n; i++) {
+            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
+            y[i] = (int16_t)((l * g + 8192) >> 14);
+        }
+    *lp = l;
+    *le = r;
+}
+/* the block's HL_NC samples of a circular buffer of len from index d in at most two runs, no wrap inside them:
+ * body with s (the run's start in the block) and k (its length); d moves on */
+#define HL_RUNS(d, len, k, s, body)                                                         \
+    for (s = 0; s < hn; s += k) {                                                        \
+        k = (len) - (d) < hn - s ? (len) - (d) : hn - s;                              \
+        body;                                                                               \
+        d = (d) + k >= (len) ? 0u : (d) + k;                                                \
+    }
+
+/* HALL (see the top): a block of the send (n = CTL samples: audio.c) -> the mid added to out, the side into
+ * rev_side. At half the rate (HL_NC samples) in passes over the block, each with few states (every line is
+ * longer than a block: what the lines give in this block was written before it): the send, every other
+ * sample, low cut, diffusers (rev_hl.bx); the lines' ends at their drifting taps, low-passed, scaled (rev_hl.y); the
+ * outputs and the matrix; back into the lines; the outputs back to 44.1 kHz. */
+#define HL_LFO ((uint32_t)(0.37 * CTL / FS * 4294967296.0))   /* the drift: 0.37 Hz (even lines), 0.74 Hz (odd) */
+static __attribute__((noinline)) void rev_hall(const int32_t *rev_in, int32_t *out, uint32_t n)
+{
+    int16_t *b = rev_comb, *a = rev_ap;
+    uint32_t i, k, s, m, d;
+    int32_t kd = rev_frz ? 32767 : HL_KD(song.g[G_RDAMP]);
+    int32_t xp = rev_hl.x, hp = rev_hl.hp, he = rev_hl.he, mp = rev_hl.m, sp = rev_hl.s;
+    uint32_t hn = n / 2u;
+    if (rev_hl.sz != song.g[G_RSIZE] + 1)
+        hall_gains(song.g[G_RSIZE]);
+    for (i = 0; i < hn; i++) {
+        int32_t x = (xp + 2 * rev_in[2u * i] + rev_in[2u * i + 1u]) >> 2, v;   /* every other sample, 1 2 1 */
+        xp = rev_in[2u * i + 1u];
+        x = mulq15(clamp(x, -262143, 262143), 2580);    /* (ROOM's level) */
+        v = x - hp + he;                                /* the low cut, its step's remainder kept */
+        he = v & 31;
+        hp += v >> 5;
+        rev_hl.bx[i] = x - hp;
+    }
+    rev_hl.x = xp, rev_hl.hp = hp, rev_hl.he = he;
+    for (k = 0; k < HL_NAP; k++) {                      /* the diffusers */
+        d = rev_hl.d[k];
+        HL_RUNS(d, HL_AP[k], m, s, hall_ap(a + d, HL_APG[k], rev_hl.bx + s, m));
+        rev_hl.d[k] = (uint16_t)d;
+        a += HL_AP[k];
+    }
+    rev_hl.ph += HL_LFO;
+    for (k = 0; k < HL_NL; k++) {                       /* the lines' ends */
+        int32_t g = rev_frz ? 6193 : rev_hl.g[k], f = 0, lo;
+        if ((HL_LPM >> k) & 1u)
+            d = rev_hl.i[k];                                /* (low-passed: the line's end) */
+        else {                                          /* (drifting: HL_MOD + 2 +- HL_MOD samples short of it) */
+            uint32_t r = (uint32_t)(((HL_MOD + 2) << 8) +
+                                    ((osc_sine(rev_hl.ph * (1u + (k & 1u)) + k * 0x2C000000u) * HL_MOD) >> 7));
+            f = (int32_t)(r & 255u);
+            d = rev_hl.i[k] + (r >> 8);
+            d = d >= HL_LEN[k] ? d - HL_LEN[k] : d;
+        }
+        s = d + HL_LEN[k] / 2u;                         /* quiet? (two samples half a line apart) */
+        s = s >= HL_LEN[k] ? s - HL_LEN[k] : s;
+        lo = (b[d] < 0 ? -b[d] : b[d]) + (b[s] < 0 ? -b[s] : b[s]) < HL_LOUD;
+        if ((HL_LPM >> k) & 1u) {
+            HL_RUNS(d, HL_LEN[k], m, s, hall_end_lp(b + d, rev_hl.y[k] + s, m, g, lo, &rev_hl.lp[k], &rev_hl.le[k], kd));
+        } else {
+            HL_RUNS(d, HL_LEN[k], m, s, hall_end(b + d, f, rev_hl.y[k] + s, m, g, lo));
+        }
+        b += HL_LEN[k] + 1u;
+    }
+    for (i = 0; i < hn; i++) {
+        int32_t y0 = rev_hl.y[0][i], y1 = rev_hl.y[1][i], y2 = rev_hl.y[2][i], y3 = rev_hl.y[3][i];
+        int32_t y4 = rev_hl.y[4][i], y5 = rev_hl.y[5][i], y6 = rev_hl.y[6][i], y7 = rev_hl.y[7][i], x = rev_hl.bx[i];
+        int32_t t, p0, p1, p2, p3, p4, p5, p6;
+        rev_hl.l[i] = y0 + y3 + y4 - y7;                    /* the outputs */
+        rev_hl.r[i] = y1 + y2 + y5 + y6;
+        /* the matrix: C = [0 1; -1 Q], Q (7 x 7) = chi(j - i), the quadratic character mod 7 (+1 at distances
+         * 1 2 4, -1 at 3 5 6): row 1 + i of Q y = 2 (the three at +1) - (the sum of the 7) + y_1+i */
+        t = y1 + y2 + y3 + y4 + y5 + y6 + y7;
+        p0 = y2 + y3 + y5, p1 = y3 + y4 + y6, p2 = y4 + y5 + y7, p3 = y5 + y6 + y1;
+        p4 = y6 + y7 + y2, p5 = y7 + y1 + y3, p6 = y1 + y2 + y4;
+        y0 += t;
+        rev_hl.y[0][i] = (int16_t)clamp(t + x, -32768, 32767);   /* (+ the send: signs spread over the rows) */
+        rev_hl.y[1][i] = (int16_t)clamp(2 * p0 + y1 - y0 + x, -32768, 32767);
+        rev_hl.y[2][i] = (int16_t)clamp(2 * p1 + y2 - y0 + x, -32768, 32767);
+        rev_hl.y[3][i] = (int16_t)clamp(2 * p2 + y3 - y0 + x, -32768, 32767);
+        rev_hl.y[4][i] = (int16_t)clamp(2 * p3 + y4 - y0 + x, -32768, 32767);
+        rev_hl.y[5][i] = (int16_t)clamp(2 * p4 + y5 - y0 + x, -32768, 32767);
+        rev_hl.y[6][i] = (int16_t)clamp(2 * p5 + y6 - y0 + x, -32768, 32767);
+        rev_hl.y[7][i] = (int16_t)clamp(2 * p6 + y7 - y0 - x, -32768, 32767);
+    }
+    b = rev_comb;
+    for (k = 0; k < HL_NL; k++) {                       /* back into the lines (and the mirror after a wrap) */
+        d = rev_hl.i[k];
+        HL_RUNS(d, HL_LEN[k], m, s, for (i = 0; i < m; i++) b[d + i] = rev_hl.y[k][s + i]; if (!d) b[HL_LEN[k]] = b[0]);
+        rev_hl.i[k] = (uint16_t)d;
+        b += HL_LEN[k] + 1u;
+    }
+    for (i = 0; i < hn; i++) {                       /* back to 44.1 kHz, between samples */
+        int32_t mm = (rev_hl.l[i] + rev_hl.r[i]) * HL_OUT, ss = (rev_hl.l[i] - rev_hl.r[i]) * HL_OUT;
+        out[2u * i] += (mp + mm) >> 1;
+        out[2u * i + 1u] += mm;
+        rev_side[2u * i] = (sp + ss) >> 1;
+        rev_side[2u * i + 1u] = ss;
+        mp = mm;
+        sp = ss;
+    }
+    rev_hl.m = mp, rev_hl.s = sp;
+    rev_hl.side = 1;
+}
+
+
+/* Clear model state without touching delay or chorus; aliased HALL indices are cleared too. */
+static void rev_clear(void)
+{
+    memset(&rev_mem, 0, sizeof rev_mem);
+    memset(&rev_u, 0, sizeof rev_u);
+    memset(fx.line_i, 0, sizeof fx.line_i);
+    memset(fx.ap_i, 0, sizeof fx.ap_i);
+    memset(fx.line_lp, 0, sizeof fx.line_lp);
+    memset(fx.comb_i, 0, sizeof fx.comb_i);
+    memset(fx.comb_lp, 0, sizeof fx.comb_lp);
+    fx.sp_w = 0;
+    fx.sp_lp = fx.sp_hp = fx.sp_he = fx.sp_size = 0;
+    fx.sp_ph = fx.rev_ph = 0;
+}
+
 /* process the three buses for one block; sends in, wet out (stereo). The LFOs (chorus, reverb line)
  * are computed per block and ramped: no sine per sample */
 #define HALF0(v) ((v) >= 0 ? (v) >> 1 : -(-(v) >> 1))   /* v / 2 towards zero */
@@ -246,6 +561,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         x = mulq15(x << 1, dmix);
         yl += x;
         yr += x;
+        if (!fx.rtype) {
         /* reverb: two diffusers, then the four lines */
         a = mulq15(rev_in[i], 13000);
         {
@@ -295,11 +611,45 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             if (++fx.line_i[2] >= REV_LINE[2]) fx.line_i[2] = 0;
             if (++fx.line_i[3] >= REV_LINE[3]) fx.line_i[3] = 0;
         }
+        } else {
+            o0 = o1 = o2 = o3 = 0;
+        }
         wet_l[i] = yl + o0 + o2;
         wet_r[i] = yr + o1 - o3;
         rev_l[i] = o0 + o2;
         rev_r[i] = o1 - o3;
     }
+    if (fx.rtype) {
+        /* rev_l is the mono mid; HALL's side reaches both master channels here. */
+        if (fx.rtype == 1u) rev_room(rev_in, rev_l, n);
+        else if (fx.rtype == 2u) rev_spring(rev_in, rev_l, n);
+        else rev_hall(rev_in, rev_l, n);
+        for (i = 0; i < n; i++) {
+            int32_t mid = rev_l[i], side = fx.rtype == 3u ? rev_side[i] : 0;
+            rev_l[i] = mid + side;
+            rev_r[i] = mid - side;
+            wet_l[i] += rev_l[i];
+            wet_r[i] += rev_r[i];
+        }
+    }
+    {
+        uint32_t rt = (uint32_t)clamp(song.g[G_RTYPE], 0, 3);
+        if (rt != fx.rtype) {
+            /* Fade only the old reverb return, preserving chorus and delay. The next
+             * block starts the new model from silence, with no stale aliased indices. */
+            for (i = 0; i < n; i++) {
+                int32_t l = rev_l[i], r = rev_r[i];
+                uint32_t gain = (n - i - 1u) * 65536u / n;
+                rev_l[i] = mulq16(l, gain);
+                rev_r[i] = mulq16(r, gain);
+                wet_l[i] += rev_l[i] - l;
+                wet_r[i] += rev_r[i] - r;
+            }
+            rev_clear();
+            fx.rtype = (uint8_t)rt;
+        }
+    }
+
 }
 
 /* one block of the whole mix (shared with tests/hostsim.c): events -> each part
@@ -416,6 +766,32 @@ static void tflt_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t
     djf_run(f, c, b, n, ch);
     for (i = 0; i < n; i++)
         b[i] <<= 2;
+}
+
+/* Track-only resonance offset and optional LP ladder. Legacy SVF at RES=0
+ * calls exactly the original filter path; each drum bus has independent state. */
+static ladder_t track_ladder[NTRK][4] __attribute__((section(".lowram")));
+static uint8_t track_ladder_on[NTRK];
+static void track_filter_run(track_t *t, djf_t *f, const tsvf_t *legacy, int32_t *b, uint32_t n, uint32_t ch)
+{
+    const int16_t *p = render_p(t);
+    uint32_t k = (uint32_t)(t-trk) % NTRK, i;
+    int ladder = p[P_TFTYPE] && f->mode < 0;
+    if (ladder) {
+        ladder_coef_t c;
+        if (!(track_ladder_on[k] & (1u<<ch)) || (f->seed & (1u<<ch))) {
+            ladder_seed(&track_ladder[k][ch], n ? clamp(b[0] >> 4, -32768,32767) : 0);
+            track_ladder_on[k] |= (uint8_t)(1u<<ch);
+            f->seed &= (uint8_t)~(1u<<ch);
+        }
+        ladder_coef(&c, f->cut, clamp(40+p[P_TRES],0,127));
+        for (i=0;i<n;i++) b[i] = ladder_run(&track_ladder[k][ch], &c, clamp(b[i] >> 4, -32768,32767))*16;
+    } else {
+        tsvf_t c;
+        track_ladder_on[k] &= (uint8_t)~(1u<<ch);
+        if (p[P_TRES]) { tsvf_coef(&c, f->cut, clamp(40+p[P_TRES],0,127)); legacy=&c; }
+        tflt_run(f, legacy, b, n, ch);
+    }
 }
 
 /* INSERT (SLOOP 2.6, after Felucca 1.5 by Leo Kuroshita, Discussions #78 and #177): one effect per track, after DIST
@@ -647,31 +1023,24 @@ static __attribute__((noinline)) void ins_rest(track_t *t)
 static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b);
 /* (2.6) a preset's fade (voice.c sound_change): the whole part rendered with the sound it had, then the new one back.
  * The sound set aside per core, as part_buf is (a part may fade on each core at once) */
-static void mix_part(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)   /* into the set mx, through the scratch b */
+static void mix_part(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
 {
-    static int16_t pnew[2][P_COUNT] __attribute__((section(".lowram")));
-    int16_t *pn = pnew[mx != &acc[0]];
-    if (!(t->pold && t->xf_on && t->xf)) {
-        mix_part_run(t, n, mx, b);
-        return;
-    }
-    memcpy(pn, t->p, sizeof pnew[0]);
-    memcpy(t->p, t->p_old, sizeof t->p);
+    mod_begin(t);
     mix_part_run(t, n, mx, b);
-    memcpy(t->p, pn, sizeof pnew[0]);
+    t->rp = 0;
 }
 static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
 {
     uint32_t i;
     int32_t g0 = 32767 - t->att, g1 = gain_next(t);
     if (track_render(t, b, n))
-        t->tail = t->p[P_ITYPE] ? 64 : 16, t->ins_xt = 0;              /* blocks of DIST / INSERT state to run out after the last
+        t->tail = render_p(t)[P_ITYPE] ? 64 : 16, t->ins_xt = 0;              /* blocks of DIST / INSERT state to run out after the last
                                                          * voice (the INSERT's: 46 ms, a flanger's feedback) */
-    else if ((!t->tail || !(t->p[P_DIST] | t->p[P_ITYPE]) || !--t->tail) && !slicer_busy(t) &&
+    else if ((!t->tail || !(render_p(t)[P_DIST] | render_p(t)[P_ITYPE]) || !--t->tail) && !slicer_busy(t) &&
              !(t->ins_run && t->ins_res > 16u && t->ins_xt < 255u && ++t->ins_xt)) {   /* (2.6: the INSERT's DC
                                                          * blocker run out first, up to 255 blocks more: no step) */
         slicer_track(t, 0, n);                          /* (the SLICER's step clock runs on) */
-        if (t->ins_run && !t->p[P_ITYPE])
+        if (t->ins_run && !render_p(t)[P_ITYPE])
             ins_rest(t);                                /* TYPE OFF while silent: no fade-out left for the next note */
         return;
     }
@@ -680,15 +1049,15 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         return;
     }
     {
-        int32_t lvl = LEVEL_Q12[t->p[P_LEVEL] ? clamp(t->p[P_LEVEL] + t->p[P_ED_FX], 1, 127) : 0], pan = t->p[P_PAN];   /* (+ the sound's trim: 1/2 dB steps, as LEVEL's) */
+        int32_t lvl = LEVEL_Q12[render_p(t)[P_LEVEL] ? clamp(render_p(t)[P_LEVEL] + render_p(t)[P_ED_FX], 1, 127) : 0], pan = render_p(t)[P_PAN];   /* (+ the sound's trim: 1/2 dB steps, as LEVEL's) */
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
-        int32_t c = t->p[P_CHOR] * 258, d = send_thr(t->p[P_DLY] * 258, thr_dly), r = send_thr(t->p[P_REV] * 258, thr_rev);
+        int32_t c = render_p(t)[P_CHOR] * 258, d = send_thr(render_p(t)[P_DLY] * 258, thr_dly), r = send_thr(render_p(t)[P_REV] * 258, thr_rev);
         int32_t pk = t->peak;
         int32_t xmax = c > d ? c : d;
         int32_t ga = mulq15(g0, duck.g0), gb = mulq15(g1, duck.g1);   /* mute x duck, ramped over the block */
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
         track_dist(t, b, n);
-        if (t->p[P_ITYPE] | t->ins_run) {
+        if (render_p(t)[P_ITYPE] | t->ins_run) {
             track_insert(t, b, n);                      /* the INSERT (2.6): off, nothing */
             t->ins_res = (uint16_t)(b[n - 1u] < 0 ? (-b[n - 1u] > 65535 ? 65535 : -b[n - 1u])
                                                   : (b[n - 1u] > 65535 ? 65535 : b[n - 1u]));   /* (its tail's end) */
@@ -697,8 +1066,8 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         {
             tsvf_t fc;                                  /* the track's FILTER (P_TFLT), after the SLICER */
             djf_t *f = &tflt[(uint32_t)(t - trk) % NTRK];
-            if (djf_block(f, t->p[P_TFLT], &fc))
-                tflt_run(f, &fc, b, n, 0);
+            if (djf_block(f, render_p(t)[P_TFLT], &fc))
+                track_filter_run(t, f, &fc, b, n, 0);
         }
         int32_t lvl0 = t->lvl ? t->lvl : lvl, dl = (lvl - lvl0) >> CTL_LOG2;   /* a new sound's trim: ramped */
         t->lvl = lvl;
@@ -734,7 +1103,11 @@ static struct {
     int32_t ll, lr;                                     /* low-pass states */
     int32_t rnd, click;                                 /* noise state, a crackle decaying */
     int32_t bed;                                        /* hiss / crackle level, Q15: 0 stopped, 32767 playing */
-} dust = {0, 0, 0, 0, 0, 0x2545F491, 0, 0};
+} dust
+#if !FELUCCA_BOOT_BSS
+    = {0, 0, 0, 0, 0, 0x2545F491, 0, 0}
+#endif
+;
 
 static int32_t crush_bits(int32_t v, int32_t shift)    /* fewer bits, rounded toward 0: no DC from tails */
 {
@@ -809,7 +1182,7 @@ static void drum_insert(int32_t *l, int32_t *r, int32_t *v, int32_t *d, uint32_t
 {
     track_t *t = TDRUM;
     int run;
-    if (!(t->p[P_ITYPE] | t->ins_run))
+    if (!(render_p(t)[P_ITYPE] | t->ins_run))
         return;
     run = ins_run(&ins[NPART], t->p, l, n);
     run |= ins_run(&ins[NPART + 1u], t->p, r, n);
@@ -835,10 +1208,10 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
         slicer_drums(dl, dr, dv, dd, n);
         drum_insert(dl, dr, dv, dd, n);                 /* (2.6: off, nothing) */
         if (flt) {
-            tflt_run(f, &fc, dl, n, 0);
-            tflt_run(f, &fc, dr, n, 1);
-            tflt_run(f, &fc, dv, n, 2);
-            tflt_run(f, &fc, dd, n, 3);
+            track_filter_run(TDRUM, f, &fc, dl, n, 0);
+            track_filter_run(TDRUM, f, &fc, dr, n, 1);
+            track_filter_run(TDRUM, f, &fc, dv, n, 2);
+            track_filter_run(TDRUM, f, &fc, dd, n, 3);
         }
         for (i = 0; i < n; i++) {
             mx->l[i] += dl[i];
@@ -903,7 +1276,7 @@ static uint32_t units_split(void)
         if (!(mask & (1u << k)))
             continue;
         inc = p[P_LSYNC] ? lfo_sync_inc(p) : LFO_INC[p[P_LRATE] & 127];   /* (2.6: LFO 2 SYNC, as track_lfo_tick) */
-        if (t->lfo_ph + inc < t->lfo_ph || (e == &ENG_PHYS && phys_render_draws(t, fade ? t->pe_old[0] : p[P_E0])) ||
+        if (mod_rate_active(p) || t->lfo_ph + inc < t->lfo_ph || (e == &ENG_PHYS && phys_render_draws(t, fade ? t->pe_old[0] : p[P_E0])) ||
             (e == &ENG_FORMANT && nform > 1u))
             mask &= ~(1u << k);
     }
@@ -943,7 +1316,22 @@ static struct {
                                                          * (a sample that does not end where it starts: no click) */
     uint8_t uwrap;                                      /* USR: tx_usr_next went round */
     djf_t f;                                            /* TONE */
-} tx = {.rnd = 0x2545F491};
+} tx
+#if !FELUCCA_BOOT_BSS
+    = {.rnd = 0x2545F491}
+#endif
+;
+#if FELUCCA_BOOT_BSS
+/* Called once after BSS zero/data copy, before interrupts or persistence touch DSP. */
+static void fx_boot_init(void)
+{
+    lim_dac.env = lim_usb.env = LIM_T;
+    lim_dac.g = lim_usb.g = 32768;
+    dust.rnd = tx.rnd = 0x2545F491;
+    punch.req = punch.cur = -1;
+    punch.fg = 8192;
+}
+#endif
 static inline int32_t tx_n16(void) { return (int32_t)(noise32(&tx.rnd) >> 16) - 32768; }   /* -32768 .. 32767 */
 static void texture_reset(uint32_t src)
 {

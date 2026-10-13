@@ -76,6 +76,10 @@ static void up_name(uint32_t k, char *b) { str_cpy(b, k ? "MY PAD" : "MY LEAD", 
 static void up_slot_label(char *b, uint32_t k) { fmt_int(b, (int32_t)k + 1); }
 static void up_ui(uint32_t op, uint32_t k) { (void)op; (void)k; }
 static void settings_save(void) {}
+static int32_t test_section_fx[4][9];
+static int32_t section_fx_get(uint32_t scene, uint32_t field) { return test_section_fx[scene & 3u][field % 9u]; }
+static void section_fx_adjust(uint32_t scene, uint32_t field, int32_t steps)
+{ test_section_fx[scene & 3u][field % 9u] += steps; }
 #include "../firmware/src/ui_song.c"
 #include "../firmware/src/ui_studio.c"
 #include "../firmware/src/icons.c"
@@ -751,21 +755,31 @@ int main(int argc, char **argv)
         tap(B_LFO);
         check(!strcmp(PT(), "LFO"), "SELECT: LFO opens its first page");
         SEL(1);
-        check(!strcmp(PT(), "LFO 2") && song.g[G_BPM] == bpm, "SELECT on LFO: next page LFO 2 (2.6), the tempo untouched");
+        check(!strcmp(PT(), "LFO SYNC") && song.g[G_BPM] == bpm, "SELECT on LFO: next page LFO SYNC, the tempo untouched");
         ui.force = 1; frame(); ppm("page-lfo2");
+        SEL(1);
+        check(!strcmp(PT(), "LFO 2") && cur_page()->id[0] == P_L2RATE, "SELECT: the independent LFO 2");
+        frames(20); encs[panel.enc[EN_K1]]=1; frame();
+        check(TSEL->p[P_L2RATE]>0, "LFO 2: RATE knob enables independent oscillator");
+        ui.force=1;frame();ppm("page-synth-lfo2");TSEL->p[P_L2RATE]=0;
         SEL(1);
         check(!strcmp(PT(), "LFO DEST") && song.g[G_BPM] == bpm, "SELECT: then LFO DEST");
         SEL(1);
         check(!strcmp(PT(), "LFO DEST") && song.g[G_BPM] == bpm, "SELECT: stops at the last page of the family");
         SEL(-1);
-        check(!strcmp(PT(), "LFO 2"), "SELECT left: the page before");
+        check(!strcmp(PT(), "LFO 2"), "SELECT left: LFO 2");
+        SEL(-1);
+        check(!strcmp(PT(), "LFO SYNC"), "SELECT left: the page before");
         SEL(-1);
         check(!strcmp(PT(), "LFO"), "SELECT left: LFO");
         tap(B_FX); SEL(1);
         check(!strcmp(PT(), "FILTER"), "SELECT on FX: next page, the track FILTER");
         TSEL->p[P_TFLT] = -32; ui.force = 1; frames(2); ppm("page-filter");
-        check(!strcmp(ui.big_l[0], "FILT") && !strcmp(ui.big_v[0], "LP50") && !ui.big_l[1][0],
-              "FILTER page: its one value drawn large (LP50 %)");
+        frames(20); encs[panel.enc[EN_K3]]=1; frame();
+        check(TSEL->p[P_TFTYPE]==1, "track FILTER: TYPE knob selects LP24");
+        ui.force=1;frame();ppm("page-filter-lp24");TSEL->p[P_TFTYPE]=0;
+        check(!strcmp(ui.big_l[0], "FILT") && !strcmp(ui.big_v[0], "LP50") && !strcmp(ui.big_l[1], "RES") && !strcmp(ui.big_l[2], "TYPE"),
+              "FILTER page: cutoff, resonance and type");
         {   /* the big value in the graph strip: white pixels in the middle of the screen */
             uint32_t x, y, lit = 0;
             for (y = Y_GRAPH + 30; y < Y_GRAPH + 90; y++)
@@ -794,6 +808,21 @@ int main(int argc, char **argv)
         go_home(); frame(); SEL(-1);
         check(song.g[G_BPM] < bpm, "back on HOME: SELECT is the tempo again");
         song.g[G_BPM] = bpm;
+        tap(B_SCL);SEL(-9);SEL(2);
+        check(!strcmp(PT(),"MOD 1") && cur_page()->id[0]==P_M1SRC,"SELECT on SEL: MOD 1 after SEL 2");
+        TSEL->p[P_M1SRC]=MS_MODW;TSEL->p[P_M1DST]=MD_CUT;TSEL->p[P_M1AMT]=20;
+        ui.force=1;frame();ppm("page-mod1");
+        check(!strcmp(ui.big_l[0],"SRC")&&!strcmp(ui.big_l[1],"DST")&&!strcmp(ui.big_l[2],"AMT"),"MOD page renders all three controls");
+        for(int k=1;k<4;k++){SEL(1);check(cur_page()->id[0]==P_M1SRC+3*k,"SELECT reaches every matrix slot");}
+        SEL(1);check(!strcmp(PT(),"MOD 4"),"SELECT stops at MOD 4");
+        memset(TSEL->p+P_M1SRC,0,12*sizeof(int16_t));
+        tap(B_GLO);SEL(-12);SEL(1);
+        check(!strcmp(PT(),"REVERB") && cur_page()->id[0]==G_RTYPE,"GLO exposes reverb TYPE");
+        frames(20);song.g[G_RTYPE]=0;encs[panel.enc[EN_K1]]=3;frame();
+        check(song.g[G_RTYPE]==3,"GLO reverb TYPE knob reaches HALL");
+        ui.force=1;frame();ppm("page-reverb-hall");song.g[G_RTYPE]=0;
+        SEL(12);check(!strcmp(PT(),"TEXTURE 2"),"SELECT reaches ninth GLO page without truncation");
+        go_home();frame();
         #undef SEL
         #undef PT
     }

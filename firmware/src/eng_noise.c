@@ -42,15 +42,16 @@ static const struct { uint32_t w[4]; uint8_t len; int16_t hi, lo; } NOISE_SEQ[8]
     {{0x0000001Du, 0x00000000u, 0x00000000u, 0x00000000u}, 7, 12288, -16384},
 };
 
-static const param_desc_t *noise_desc(const track_t *t, uint32_t k)
+static const param_desc_t *noise_desc_values(const int16_t *p, uint32_t k)
 {
-    int32_t mode = t->p[P_E0];
+    int32_t mode = p[P_E0];
     if (k == 5u && mode >= NZ_LFSR)
         return mode == NZ_LFSR ? &NOISE_LONG : &NOISE_META;
     if (k == 7u && mode >= NZ_LFSR)
         return &NOISE_CLK;
     return 0;
 }
+static const param_desc_t *noise_desc(const track_t *t, uint32_t k) { return noise_desc_values(t->p,k); }
 
 /* phase increment of pitch p (1/16 semitone) past the table's top, up to one step a sample */
 static uint32_t noise_inc(int32_t p)
@@ -96,7 +97,7 @@ static void noise_note_on(track_t *t, voice_t *v)
 
 static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    const int16_t *p = t->p;
+    const int16_t *p = render_p(t);
     uint32_t mode = (uint32_t)p[P_E0] & 3u, sel = ((uint32_t)p[P_E5] >> 4) & 7u, i;
     int32_t res = p[P_E3], drft = p[P_E6], crsh = mode < NZ_LFSR ? p[P_E7] : 0;
     int32_t ic1 = v->s[0], ic2 = v->s[1], rng = v->s[2], b0 = v->s[4], b1 = v->s[5], b2 = v->s[6], br = v->s[7];

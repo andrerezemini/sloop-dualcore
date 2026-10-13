@@ -67,6 +67,17 @@ run "punch-in FX: 27 effects (11 on the black keys), bounded, dry after release,
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/fx251_test" tests/fx251_test.c -lm
 run "after Felucca 1.4 / 1.5: INSERT, filter TYPE, ENV SYNC, LFO 2, drum mutes, MIDI LEARN" "$OUT/fx251_test"
 
+# synth: matrix/controller routing, filter and terrain reference, reverb models, build assets.
+for t in mod_test synth_dsp_test reverb_types_test; do
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/$t" "tests/$t.c" -lm
+    run "synth: $t" "$OUT/$t"
+done
+run "synth build profiles and lossless assets" python3 tests/synth_s0_test.py
+for b in 0 1; do
+    $CC -O2 -w -DFELUCCA_BOOT_BSS=$b -Ibuild/gen -Ifirmware/src -o "$OUT/synth_boot_$b" tests/synth_boot_test.c -lm
+    run "synth boot initialization BSS=$b" "$OUT/synth_boot_$b"
+done
+
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/ui_pages_test" tests/ui_pages_test.c -lm
 run "live UI: pages, layers (punch, steps, erase, roll, key, mix), holds, drums, REC, fuzz" "$OUT/ui_pages_test" "$OUT"
 # no divide by 0 (the FM-1 runs with the div0 trap off, hal/fm1_irq.h: a real one would give a wrong value
