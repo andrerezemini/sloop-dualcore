@@ -17,7 +17,7 @@ static uint32_t section_bars(uint32_t s)
     if (!proj_ok(p))
         return 1;
     for (k = 0; k < NTRK; k++) {
-        uint32_t len = (uint32_t)clamp(p->t[k].p[P_SLEN], 1, NSTEP), u = div_units((uint32_t)p->t[k].p[P_SDIV] % NDIV_STEP);
+        uint32_t len = (uint32_t)clamp(pt_get(&p->t[k], P_SLEN), 1, NSTEP), u = div_units((uint32_t)pt_get(&p->t[k], P_SDIV) % NDIV_STEP);
         uint32_t b = (len * u + 4u * BEAT_U - 1u) / (4u * BEAT_U);   /* (64 x 8 beats fits 32 bits) */
         if (b > bars)
             bars = b;
@@ -26,8 +26,8 @@ static uint32_t section_bars(uint32_t s)
 }
 
 /* Called only at an audio-block boundary, after validation of all slots at
- * start. The song keeps one tempo and global FX across every section (only the drum
- * level and reverb come from it). */
+ * start. The song keeps one tempo; optional section delay/reverb overrides
+ * are applied by proj_apply, without touching the surviving FX tails. */
 static void arrangement_apply(uint32_t scene)
 {
     uint32_t k;

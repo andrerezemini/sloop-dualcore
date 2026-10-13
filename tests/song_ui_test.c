@@ -36,6 +36,10 @@ static void open_family(uint32_t f) {(void)f;ui.home=1;}
 static int32_t panel_enc(uint32_t i) {int32_t s=enc[i];enc[i]=0;return s;}
 static void song_backup(void) {}
 static void song_restore(void) {}
+static int32_t test_section_fx[4][9];
+static int32_t section_fx_get(uint32_t scene, uint32_t field) { return test_section_fx[scene & 3u][field % 9u]; }
+static void section_fx_adjust(uint32_t scene, uint32_t field, int32_t steps)
+{ test_section_fx[scene & 3u][field % 9u] += steps; }
 #include "../firmware/src/ui_song.c"
 static void press(uint32_t b) {song_screen_input(1u<<panel.btn[b],0);}
 
@@ -83,6 +87,16 @@ int main(int argc,char **argv)
         }
         fclose(f);
     }
+    enc[EN_SELECT]=1; song_screen_input(0,0); assert(song_fx_page==1);
+    enc[EN_K2]=2; song_screen_input(0,0); assert(test_section_fx[0][2]==2);
+    press(B_FX); assert(test_section_fx[0][1]==1);
+    ui.force=1; song_screen_draw();
+    enc[EN_SELECT]=1; song_screen_input(0,0); assert(song_fx_page==2);
+    enc[EN_K4]=50; song_screen_input(0,0); assert(test_section_fx[0][8]==50);
+    press(B_FX); assert(test_section_fx[0][0]==1);
+    song.playing=1; enc[EN_K4]=1; song_screen_input(0,0); assert(test_section_fx[0][8]==50);
+    ui.force=1; song_screen_draw(); song.playing=0;
+    enc[EN_SELECT]=-2; song_screen_input(0,0); assert(!song_fx_page);
     puts("song UI: independent plan/scene save, overwrite confirmation, stopped-only changes, missing scene, bounds PASS");
     return 0;
 }

@@ -6,7 +6,10 @@
  * the transport is stopped and nothing sounds) and comes back at power-on: SLOOP starts where you
  * left it.
  *
- * Formats: 6 ("FUN6", written, SLOOP 2.6): format 5 with the ten parameters of 2.6 (P_ITYPE .. P_LPOL, just
+ * Format 7 ("FUN7", synth): signed-byte common parameters, 16-bit engine values,
+ * explicit reverb model and per-section FX inheritance flags. The four tracks and
+ * every field of formats 1..6 are migrated by their original IDs; still <=3840 B.
+ * Formats: 6 ("FUN6", read only, SLOOP 2.6): format 5 with the ten parameters of 2.6 (P_ITYPE .. P_LPOL, just
  * before P_E0: the INSERT, the ANALOG filter TYPE, ENV SYNC, LFO 2) in a byte each, and each step's nudge (6 bits)
  * and fill condition (2 bits) in one byte: format 5 was full (3840 bytes, one flash object), this is 3816.
  * Read and converted: 5 ("FUN5", SLOOP 2.4 .. 2.5: format 4 plus, per track, the nudge of each step (micro), NLOCK
@@ -21,7 +24,8 @@
  *
  * Built on the host too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP), drums.c (the lanes), the engines and trk_def_engine (ui.c). */
-#define PROJ_MAGIC 0x46554E36u                 /* "FUN6": format 5 + the 2.6 parameters, nudge and condition in a byte */
+#define PROJ_MAGIC_V6 0x46554E36u
+#define PROJ_MAGIC 0x46554E37u                 /* "FUN6": format 5 + the 2.6 parameters, nudge and condition in a byte */
 #define PROJ_MAGIC_V5 0x46554E35u              /* "FUN5": format 4 + per-step nudge, parameter locks, fill conditions (SLOOP 2.4) */
 #define PROJ_MAGIC_V4 0x46554E34u              /* "FUN4": four tracks, P_COUNT parameters each, 10-byte steps; read only */
 #define PROJ_MAGIC_V3 0x46554E33u              /* "FUN3": SLOOP 1.x; read only */
@@ -36,10 +40,10 @@
 #define PROJ_NG 32u                            /* the globals of formats 4 and 5 (G_COUNT until 2.4). SLOOP 2.5's
                                                 * G_DRDLY rides in the byte after sel (0 in older projects: off),
                                                 * so the format and its size do not change */
-_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_COUNT == G_BEND + 1u,
+_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_RTYPE == G_BEND + 1u && G_COUNT == G_RTYPE + 1u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
-#define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
-#define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
+#define PROJ_NC6 53u           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
+#define PROJ_NX6 10u  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
 _Static_assert(PROJ_NC6 == PROJ_NP_V5 - 8u && PROJ_NX6 == 10u, "format 6: format 5's parameters, then ten bytes");
 typedef struct {                               /* one track; the drum track ignores engine / preset */
     int16_t p[PROJ_NC6];                       /* P_LEVEL .. P_VLEAD (pt_get, pt_set) */
@@ -52,24 +56,41 @@ typedef struct {                               /* one track; the drum track igno
     };
     uint8_t mf[NSTEP];                         /* each step's nudge (core.h MICRO_*, 6 bits) | its fill condition << 6 */
     plock_t lock[NLOCK];                       /* and its parameter locks (step LOCK_FREE = none) */
+} proj_trk_v6_t;
+typedef struct {
+    uint32_t magic, size;
+    int16_t g[PROJ_NG];
+    uint8_t sel, drdly, rsv[2];                /* the selected track; 2.5: G_DRDLY */
+    proj_trk_v6_t t[NTRK];
+    uint32_t sum;
+} project_v6_t;
+typedef struct {                               /* one track; the drum track ignores engine / preset */
+    int8_t p[P_E0];                       /* P_LEVEL .. P_VLEAD (pt_get, pt_set) */
+    int16_t e[8];                              /* P_E0 .. P_E7 */
+    uint8_t engine, preset;
+    union {
+        step_t step[NSTEP];
+        dstep_t dstep[NSTEP];                  /* (the drum track: 16 lanes, the same size) */
+    };
+    uint8_t mf[NSTEP];                         /* each step's nudge (core.h MICRO_*, 6 bits) | its fill condition << 6 */
+    plock_t lock[NLOCK];                       /* and its parameter locks (step LOCK_FREE = none) */
 } proj_trk_t;
 typedef struct {
     uint32_t magic, size;
     int16_t g[PROJ_NG];
     uint8_t sel, drdly, rsv[2];                /* the selected track; 2.5: G_DRDLY */
+    uint8_t rtype, fx_mask, pad[2];            /* FUN7: model, section overrides (bit 0 DELAY, bit 1 REVERB) */
     proj_trk_t t[NTRK];
     uint32_t sum;
 } project_t;
 static int16_t pt_get(const proj_trk_t *t, uint32_t id)   /* p[id] of a stored track */
 {
-    return id < PROJ_NC6 ? t->p[id] : id < P_E0 ? (int16_t)t->x[id - PROJ_NC6] : t->e[(id - P_E0) & 7u];
+    return id < P_E0 ? t->p[id] : t->e[(id - P_E0) & 7u];
 }
 static void pt_set(proj_trk_t *t, uint32_t id, int32_t v)
 {
-    if (id < PROJ_NC6)
-        t->p[id] = (int16_t)v;
-    else if (id < P_E0)
-        t->x[id - PROJ_NC6] = (uint8_t)clamp(v, 0, 255);
+    if (id < P_E0)
+        t->p[id] = (int8_t)clamp(v, -128, 127);
     else
         t->e[(id - P_E0) & 7u] = (int16_t)v;
 }
@@ -145,7 +166,9 @@ typedef struct {                               /* format 1 (until 0.5 beta), rea
 } project_v1_t;
 _Static_assert(sizeof(project_v2_t) == 2552u && sizeof(project_v1_t) == 688u && sizeof(project_v3_t) == 2584u &&
                sizeof(project_v4_t) == 3112u && sizeof(project_v5_t) == 3840u, "formats 1 / 2 / 3 / 4 / 5 as they were stored");
-_Static_assert(sizeof(project_t) <= 3840u, "format 6 fits one flash object (storage.c ST_PAYLOAD_MAX)");
+_Static_assert(sizeof(project_v6_t) == 3816u, "FUN6 layout is frozen");
+_Static_assert(sizeof(project_t) <= 3840u, "format 7 fits one flash object (storage.c ST_PAYLOAD_MAX)");
+static uint8_t section_fx_mask;                 /* working project: inherited FX unless explicitly enabled */
 project_t proj_slot[4] __attribute__((section(".noinit")));
 
 static uint32_t proj_hash(const void *p, uint32_t n)   /* FNV-1a over n bytes */
@@ -211,7 +234,7 @@ static void proj_trk_from_v3(proj_trk_t *d, const proj_trk_v3_t *s, int drum)
     uint32_t k, nc = PROJ_NP_V3 - 8u;
     proj_trk_plain(d);
     for (k = 0; k < PROJ_NC6; k++)
-        d->p[k] = k < nc ? s->p[k] : TP[k].def;
+        pt_set(d, k, k < nc ? s->p[k] : TP[k].def);
     for (k = 0; k < 8u; k++)
         d->e[k] = s->p[nc + k];
     d->p[P_SSWING] = swing_from_v3(d->p[P_SSWING]);
@@ -255,12 +278,51 @@ static int proj_from_v4(project_t *q, const project_v4_t *v4, int n)
         uint32_t k;
         proj_trk_plain(&q->t[i]);
         for (k = 0; k < PROJ_NC6; k++)                 /* by id up to P_CHORD, the parameters added since: */
-            q->t[i].p[k] = k < PROJ_NP_V4 - 8u ? v4->t[i].p[k] : TP[k].def;   /* their defaults; P_E0.. moved */
+            pt_set(&q->t[i], k, k < PROJ_NP_V4 - 8u ? v4->t[i].p[k] : TP[k].def);   /* their defaults; P_E0.. moved */
         for (k = 0; k < 8u; k++)
             q->t[i].e[k] = v4->t[i].p[PROJ_NP_V4 - 8u + k];
         q->t[i].engine = v4->t[i].engine;
         q->t[i].preset = v4->t[i].preset;
         memcpy(q->t[i].step, v4->t[i].step, sizeof q->t[i].step);
+    }
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+/* FUN6 -> FUN7: the old engine IDs and lock IDs are decoded against the frozen
+ * old boundary (63), never today's P_E0. New parameters and overrides default off. */
+static int proj_from_v6(project_t *q, const project_v6_t *v6, int n)
+{
+    uint32_t i, k;
+    if (n != (int)sizeof *v6 || v6->magic != PROJ_MAGIC_V6 || v6->size != sizeof *v6 ||
+        v6->sum != proj_hash(v6, sizeof *v6 - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v6->g, sizeof q->g);
+    memcpy(q->rsv, v6->rsv, sizeof q->rsv);
+    q->sel = v6->sel;
+    q->drdly = v6->drdly;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_v6_t *src = &v6->t[i];
+        proj_trk_t *dst = &q->t[i];
+        proj_trk_plain(dst);
+        for (k = 0; k < PROJ_NC6; k++) pt_set(dst, k, src->p[k]);
+        for (k = 0; k < PROJ_NX6; k++) pt_set(dst, PROJ_NC6 + k, src->x[k]);
+        memcpy(dst->e, src->e, sizeof dst->e);
+        dst->engine = src->engine;
+        dst->preset = src->preset;
+        memcpy(dst->step, src->step, sizeof dst->step);
+        memcpy(dst->mf, src->mf, sizeof dst->mf);
+        for (k = 0; k < NLOCK; k++) {
+            dst->lock[k] = src->lock[k];
+            if (dst->lock[k].step != LOCK_FREE && dst->lock[k].param >= 63u) {
+                if (dst->lock[k].param < 71u)
+                    dst->lock[k].param = (uint8_t)(P_E0 + dst->lock[k].param - 63u);
+                else dst->lock[k].step = LOCK_FREE;
+            }
+        }
     }
     q->sum = proj_sum(q);
     return 1;
@@ -285,7 +347,7 @@ static int proj_from_v5(project_t *q, const project_v5_t *v5, int n)
         proj_trk_t *d = &q->t[i];
         proj_trk_plain(d);
         for (k = 0; k < PROJ_NC6; k++)
-            d->p[k] = s->p[k];
+            pt_set(d, k, s->p[k]);
         for (k = 0; k < 8u; k++)
             d->e[k] = s->p[PROJ_NP_V5 - 8u + k];
         d->engine = s->engine;
@@ -379,7 +441,7 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v5(q, (const project_v5_t *)b, n) || proj_from_v4(q, (const project_v4_t *)b, n) ||
+    return proj_from_v6(q, (const project_v6_t *)b, n) || proj_from_v5(q, (const project_v5_t *)b, n) || proj_from_v4(q, (const project_v4_t *)b, n) ||
            proj_from_v3(q, (const project_v3_t *)b, n) ||
            proj_from_v2(q, (const project_v2_t *)b, n) || proj_from_v1(q, (const project_v1_t *)b, n);
 }
@@ -423,6 +485,8 @@ static void proj_capture(project_t *p)        /* what is playing now, as a proje
         p->g[i] = song.g[i];
     p->sel = song.sel;
     p->drdly = (uint8_t)song.g[G_DRDLY];
+    p->rtype = (uint8_t)song.g[G_RTYPE];
+    p->fx_mask = section_fx_mask & 3u;
     proj_tx_put(p);
     for (i = 0; i < NTRK; i++) {
         uint32_t k;
@@ -447,10 +511,16 @@ static void proj_apply(const project_t *p, int all)
     for (i = 0; i < PROJ_NG; i++)
         if (all ? i != G_SLOT && i != G_LOAD && i != G_SAVE && i != G_SYNC && i != G_MIDI && i != G_ROUTE && i != G_DRCH &&
                       i != G_INFO
-                : i == G_DRLVL || i == G_DRREV)                 /* (2.6: the drum channel a setting of the FM-1, GLO > MIDI;
+                : i == G_DRLVL || i == G_DRREV ||
+                  ((p->fx_mask & 1u) && i >= G_DTIME && i <= G_DMIX) ||
+                  ((p->fx_mask & 2u) && (i == G_RSIZE || i == G_RDAMP)))                 /* (2.6: the drum channel a setting of the FM-1, GLO > MIDI;
                                                                  * its slot and G_INFO's hold the TEXTURE) */
             song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
     song.g[G_DRDLY] = (int16_t)clamp(p->drdly, GP[G_DRDLY].min, GP[G_DRDLY].max);   /* (a load and a section, as REV) */
+    if (all || (p->fx_mask & 2u))
+        song.g[G_RTYPE] = (int16_t)clamp(p->rtype, 0, 3);
+    if (all)
+        section_fx_mask = p->fx_mask & 3u;
     proj_tx_get(p);                                     /* GLO > TEXTURE (2.6): a load and a section */
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
@@ -508,10 +578,41 @@ static void proj_apply(const project_t *p, int all)
 #include "arranger_scene.c"
 #endif
 static uint8_t sec_dirty, song_dirty;           /* live sections / the song: in RAM, not yet in flash */
+/* SONG SELECT pages: project FX, edited only while stopped. IDs 0,1 are the
+ * override flags; 2..8 are RTYPE/SIZE/DAMP/TIME/FDBK/COLOR/MIX. */
+static int32_t section_fx_get(uint32_t scene, uint32_t field)
+{
+    static const uint8_t id[] = {G_RSIZE, G_RDAMP, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX};
+    const project_t *p = &proj_slot[scene & 3u];
+    if (!proj_ok(p)) return 0;
+    if (field < 2u) return (p->fx_mask >> field) & 1u;
+    if (field == 2u) return p->rtype;
+    return field < 9u ? p->g[id[field - 3u]] : 0;
+}
+static void section_fx_adjust(uint32_t scene, uint32_t field, int32_t steps)
+{
+    static const uint8_t id[] = {G_RSIZE, G_RDAMP, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX};
+    project_t *p = &proj_slot[scene & 3u];
+    if (song.playing || transport_req || !proj_ok(p)) return;
+    if (field < 2u) {
+        uint32_t mask = 1u << field;
+        p->fx_mask = (uint8_t)((p->fx_mask & ~mask) |
+            ((uint32_t)clamp(section_fx_get(scene, field) + steps, 0, 1) << field));
+    } else if (field == 2u) p->rtype = (uint8_t)clamp(p->rtype + steps, 0, 3);
+    else if (field < 9u) {
+        uint32_t g = id[field - 3u];
+        p->g[g] = (int16_t)clamp(p->g[g] + steps, GP[g].min, GP[g].max);
+    } else return;
+    p->sum = proj_sum(p);
+    sec_dirty |= (uint8_t)(1u << (scene & 3u));
+    ui.force = 1;
+}
+
 #if FELUCCA_FLASH
 /* slot from flash into RAM (format 5, or an old one converted) */
 static union {
-    project_t v6;
+    project_t v7;
+    project_v6_t v6;
     project_v5_t v5;
     project_v4_t v4;
     project_v3_t v3;
@@ -774,7 +875,7 @@ static void persist_boot(void)                    /* before settings_init / pane
                 proj_fetch(i);
             } else {
                 int n = st_load(OBJ_PROJECT0 + i, &proj_tmp, sizeof proj_tmp);
-                if (n != (int)sizeof proj_slot[i] || memcmp(&proj_tmp.v6, &proj_slot[i], sizeof proj_slot[i]))
+                if (n != (int)sizeof proj_slot[i] || memcmp(&proj_tmp.v7, &proj_slot[i], sizeof proj_slot[i]))
                     sec_dirty |= (uint8_t)(1u << i);
             }
     }

@@ -27,7 +27,7 @@ static int check(const char *what, int ok)
 }
 
 /* the value parameter k (old id) of track t had in the old project */
-static int16_t oldv(uint32_t t, uint32_t k) { return (int16_t)(t * 100u + k * 3u + 1u); }
+static int16_t oldv(uint32_t t, uint32_t k) { return (int16_t)(t * 7u + k + 1u); }
 
 static const uint8_t OLD_ENG[NTRK] = {7, 0, 6, 8};   /* WHEEL, ANALOG, TRIO; the drum track: 8 (none) */
 static void fill_old_steps(step8_t *st, uint32_t t)
@@ -127,15 +127,15 @@ int main(void)
     uint32_t i, t;
     int bad = 0, ok;
 
-    bad += check("layout: P_CHORD, P_TFLT, P_STRUM, P_VLEAD, then the ten of 2.6 just before P_E0 (63), P_COUNT = format 5's + 10",
+    bad += check("layout: legacy parameter IDs frozen, synth parameters appended before E0",
                  P_CHORD + 1 == P_TFLT && P_TFLT + 1 == P_STRUM && P_STRUM + 1 == P_VLEAD && P_VLEAD + 1 == P_ITYPE &&
-                 P_LPOL + 1 == P_E0 && P_E0 == 63 && P_COUNT == PROJ_NP_V5 + 10u && PROJ_NP_V5 == PROJ_NP_V4 + 3u &&
+                 P_LPOL == 62 && P_M1SRC == 63 && P_E0 == 81 && P_COUNT == 89u && PROJ_NP_V5 == PROJ_NP_V4 + 3u &&
                  PROJ_NP_V4 == PROJ_NP_V3 + 1u && P_SLDEPTH + 1 == P_CHORD);
-    bad += check("format 6 fits one flash object (3816 of 3840 bytes); 4 slots fit .noinit (with panel, settings, dbg, bootguard)",
-                 sizeof(project_t) <= 3840u && 4u * sizeof(project_t) <= 0x3D50u - 256u && sizeof(project_t) == 3816u);
+    bad += check("format 7 fits one flash object; legacy format 6 is exactly 3816 bytes; 4 slots fit .noinit (with panel, settings, dbg, bootguard)",
+                 sizeof(project_t) <= 3840u && 4u * sizeof(project_t) <= 0x3D50u - 256u && sizeof(project_v6_t) == 3816u);
     {   /* every 2.6 parameter's range fits its byte */
         uint32_t k, fits = 1;
-        for (k = P_ITYPE; k < P_E0; k++) fits &= TP[k].min >= 0 && TP[k].max <= 255;
+        for (k = P_ITYPE; k <= P_LPOL; k++) fits &= TP[k].min >= 0 && TP[k].max <= 255;
         bad += check("format 6: the 2.6 parameters fit a byte each (0..255)", fits);
     }
 
@@ -152,14 +152,14 @@ int main(void)
     v3.sum = proj_hash(&v3, sizeof v3 - 4u);
     memcpy(&buf, &v3, sizeof v3);
     ok = proj_import(&q, &buf, (int)sizeof v3);
-    bad += check("FUN3 -> FUN6: converted, valid format 6 slot", ok && proj_ok(&q) && q.magic == PROJ_MAGIC);
+    bad += check("FUN3 -> FUN7: converted, valid format 6 slot", ok && proj_ok(&q) && q.magic == PROJ_MAGIC);
     ok = q.sel == 3 && q.g[G_SWING] == 40;
     for (i = 0; i < PROJ_NG_V3; i++)
         ok &= i == G_SWING || q.g[i] == (int16_t)(300 + i);
     for (i = PROJ_NG_V3; i < PROJ_NG; i++)
         ok &= q.g[i] == GP[i].def;
     ok &= q.drdly == 0;
-    bad += check("FUN3 -> FUN6: globals (swing 50 -> 40: the MPC scale), the new ones default", ok);
+    bad += check("FUN3 -> FUN7: globals (swing 50 -> 40: the MPC scale), the new ones default", ok);
     ok = 1;
     for (t = 0; t < NTRK; t++) {
         const proj_trk_t *n = &q.t[t];
@@ -178,7 +178,7 @@ int main(void)
         for (k = P_ITYPE; k < P_E0; k++)
             ok &= pt_get(n, k) == TP[k].def;
     }
-    bad += check("FUN3 -> FUN6: parameters (P_E0.. moved), steps, drum notes -> lanes, no lock, no fill", ok);
+    bad += check("FUN3 -> FUN7: parameters (P_E0.. moved), steps, drum notes -> lanes, no lock, no fill", ok);
 
     /* format 2, as written before the SLICER */
     memset(&v2, 0, sizeof v2);
@@ -193,16 +193,16 @@ int main(void)
     bad += check("FUN2 image is 2552 bytes (as stored)", sizeof v2 == 2552u);
     memcpy(&buf, &v2, sizeof v2);
     ok = proj_import(&q, &buf, (int)sizeof v2);
-    bad += check("FUN2 -> FUN6: converted, valid format 6 slot", ok && proj_ok(&q) && q.magic == PROJ_MAGIC);
+    bad += check("FUN2 -> FUN7: converted, valid format 6 slot", ok && proj_ok(&q) && q.magic == PROJ_MAGIC);
     ok = q.sel == 2;
     for (i = 0; i < PROJ_NG_V2; i++)
         ok &= i == G_SWING || q.g[i] == (int16_t)(500 + i);
-    bad += check("FUN2 -> FUN6: globals and selected track", ok);
+    bad += check("FUN2 -> FUN7: globals and selected track", ok);
     ok = 1;
     for (t = 0; t < NTRK; t++)
         ok &= track_ok_v2(&q.t[t], &v2.t[t], t);
-    bad += check("FUN2 -> FUN6: every parameter mapped, SLICER OFF, CHORD OFF (4 tracks)", ok);
-    bad += check("FUN2 -> FUN6: engine bytes kept (WHEEL 7, ANALOG 0, TRIO 6), drum 0",
+    bad += check("FUN2 -> FUN7: every parameter mapped, SLICER OFF, CHORD OFF (4 tracks)", ok);
+    bad += check("FUN2 -> FUN7: engine bytes kept (WHEEL 7, ANALOG 0, TRIO 6), drum 0",
                  q.t[0].engine == 7 && q.t[1].engine == 0 && q.t[2].engine == 6 && q.t[3].engine == 0 &&
                  str_eq(ENGINES[7]->name, "WHEEL") && str_eq(ENGINES[6]->name, "TRIO") && NENGINES > 8);
 
@@ -230,7 +230,8 @@ int main(void)
          q2.t[0].step[3].lvl == 0x9C && q2.t[0].step[3].rat == 0x27 && dstep_lvl(&q2.t[TRK_DRUM].dstep[5], 13) == LV_GHOST &&
          dstep_rat(&q2.t[TRK_DRUM].dstep[5], 13) == 2u && !memcmp(q2.g, v4.g, sizeof q2.g);
     for (t = 0; t < NTRK; t++) {
-        ok &= !memcmp(q2.t[t].p, v4.t[t].p, P_TFLT * 2u) && !memcmp(q2.t[t].e, v4.t[t].p + P_TFLT, 16u) &&
+        for (i = 0; i < P_TFLT; i++) ok &= pt_get(&q2.t[t], i) == v4.t[t].p[i];
+        ok &= !memcmp(q2.t[t].e, v4.t[t].p + P_TFLT, 16u) &&
               q2.t[t].p[P_TFLT] == 0 && q2.t[t].p[P_STRUM] == 0 && q2.t[t].p[P_VLEAD] == 0 &&
               !memcmp(q2.t[t].step, v4.t[t].step, sizeof q2.t[t].step);
         for (i = 0; i < NLOCK; i++)
@@ -240,13 +241,13 @@ int main(void)
         for (i = P_ITYPE; i < P_E0; i++)
             ok &= pt_get(&q2.t[t], i) == TP[i].def;
     }
-    bad += check("FUN4 -> FUN6: as stored (levels, ratchets, lanes, engine 8; P_E0.. moved, FILTER off), zero nudges, locks free, no fill condition", ok);
+    bad += check("FUN4 -> FUN7: as stored (levels, ratchets, lanes, engine 8; P_E0.. moved, FILTER off), zero nudges, locks free, no fill condition", ok);
     v4.t[2].step[1].vel ^= 1u;
     memcpy(&buf, &v4, sizeof v4);
     bad += check("FUN4 with a bad checksum: refused", !proj_import(&q2, &buf, (int)sizeof v4));
     v4.t[2].step[1].vel ^= 1u;
 
-    /* a FUN5 image (SLOOP 2.4 .. 2.5, as stored) -> FUN6: by id, the 2.6 ten at their defaults, the nudges and
+    /* a FUN5 image (SLOOP 2.4 .. 2.5, as stored) -> FUN7: by id, the 2.6 ten at their defaults, the nudges and
      * conditions into a byte a step, a lock on P_E0.. moved with it (format 5's 53.. -> 63..) */
     memset(&v5, 0, sizeof v5);
     v5.magic = PROJ_MAGIC_V5;
@@ -286,7 +287,7 @@ int main(void)
           pt_fill(&q2.t[0], 2) == FC_NORM && pt_fill(&q2.t[TRK_DRUM], 63) == FC_FILL &&
           q2.t[1].lock[0].param == P_E1 && q2.t[1].lock[0].val == 9 && q2.t[1].lock[1].param == P_DIST &&
           q2.t[1].lock[2].step == LOCK_FREE;
-    bad += check("FUN5 -> FUN6: by id, the 2.6 parameters default, nudges and conditions kept, a lock on E2 moved with it", ok);
+    bad += check("FUN5 -> FUN7: by id, the 2.6 parameters default, nudges and conditions kept, a lock on E2 moved with it", ok);
     v5.t[3].micro[0] ^= 1;
     memcpy(&buf, &v5, sizeof v5);
     bad += check("FUN5 with a bad checksum: refused", !proj_import(&q2, &buf, (int)sizeof v5));
@@ -307,7 +308,7 @@ int main(void)
     pt_set(&q.t[0], P_LSYNC, 5), pt_set(&q.t[0], P_ESYNC, 1), pt_set(&q.t[0], P_FTYPE, 2);
     q.sum = proj_sum(&q);
     memcpy(&buf, &q, sizeof q);
-    bad += check("FUN6 -> FUN6: as stored (levels, ratchets, lanes, nudges, locks, fill conditions, INSERT, SYNC, engine 8)",
+    bad += check("FUN6 -> FUN7: as stored (levels, ratchets, lanes, nudges, locks, fill conditions, INSERT, SYNC, engine 8)",
                  proj_import(&q2, &buf, (int)sizeof q) && !memcmp(&q, &q2, sizeof q) && q2.t[1].engine == 8 &&
                  pt_micro(&q2.t[0], 3) == -32 && pt_fill(&q2.t[0], 3) == FC_FILL && pt_micro(&q2.t[0], 4) == 31 &&
                  q2.t[0].lock[1].val == 100 && q2.t[2].lock[23].step == 63 && q2.t[2].p[P_TFLT] == -30 &&
@@ -345,7 +346,7 @@ int main(void)
         ok &= q.t[t].preset == 0xFF && q.t[t].p[P_SLCR] == 0 && q.t[t].p[P_LEVEL] == TP[P_LEVEL].def &&
               pt_get(&q.t[t], P_E0) == ENGINES[trk_def_engine(t)]->edit[0].def && q.t[t].lock[0].step == LOCK_FREE &&
               (t == TRK_DRUM ? dstep_mask(&q.t[t].dstep[0]) == 0u : q.t[t].step[0].time == ST_REST);
-    bad += check("FUN1 -> FUN6: track 1 mapped, tracks 2..4 defaults", ok);
+    bad += check("FUN1 -> FUN7: track 1 mapped, tracks 2..4 defaults", ok);
 
     /* capture / apply: the working project round trip (nudges and locks too) */
     host_tracks_init();
@@ -414,12 +415,12 @@ int main(void)
          * SRC (4 bits), WHEN and DUCK (1), RATE (a byte), LEVEL and TONE + 64 (7 bits each) */
         uint32_t k;
         int ok = 1;
-        for (k = PROJ_NC6; k < P_E0; k++)
-            ok &= TP[k].min >= 0 && TP[k].max <= 255;
+        for (k = 0; k < P_E0; k++)
+            ok &= TP[k].min >= -128 && TP[k].max <= 127;
         ok &= GP[G_TXSRC].min >= 0 && GP[G_TXSRC].max <= 15 && GP[G_TXWHEN].min >= 0 && GP[G_TXWHEN].max <= 1 &&
               GP[G_TXDUCK].min >= 0 && GP[G_TXDUCK].max <= 1 && GP[G_TXRATE].min >= 0 && GP[G_TXRATE].max <= 255 &&
               GP[G_TXLVL].min >= 0 && GP[G_TXLVL].max <= 127 && GP[G_TXTONE].min >= -64 && GP[G_TXTONE].max <= 63;
-        bad += check("format 6: the byte parameters and TEXTURE's packed fields hold every value of their range", ok);
+        bad += check("format 7: the signed byte parameters and TEXTURE's packed fields hold every value of their range", ok);
     }
     /* a damaged image: a nudge out of range, a lock on a parameter that cannot lock, on a step past the end,
      * with a value past the range: clamped, freed, freed, clamped */
@@ -437,6 +438,61 @@ int main(void)
          step_fill(&trk[1], 4) == FC_FILL && step_fill(&trk[1], 5) == FC_NOFILL && trk[1].fill[1] == 0x09;
     bad += check("apply: INSERT 200 -> the last type, a lock on LEN / step 64 / param 200 is freed, LEVEL 999 -> 127, condition 3 -> normal", ok);
 
+    {
+        project_v6_t old;
+        memset(&old, 0, sizeof old);
+        old.magic = PROJ_MAGIC_V6; old.size = sizeof old;
+        old.rsv[0] = 0x85; old.rsv[1] = 3;
+        for (t = 0; t < NTRK; t++) {
+            for (i = 0; i < 53; i++) old.t[t].p[i] = (int16_t)(i - 20);
+            for (i = 0; i < 10; i++) old.t[t].x[i] = (uint8_t)(i + 1);
+            for (i = 0; i < 8; i++) old.t[t].e[i] = (int16_t)(1000 + i);
+            for (i = 0; i < NLOCK; i++) old.t[t].lock[i].step = LOCK_FREE;
+            old.t[t].lock[0] = (plock_t){3, 65, -12};
+            old.t[t].mf[2] = 0xE1;
+            old.t[t].step[3].note[0] = 60;
+        }
+        old.sum = proj_hash(&old, sizeof old - 4);
+        ok = proj_import(&q2, &old, sizeof old) && proj_ok(&q2) && !q2.fx_mask && !q2.rtype &&
+             q2.rsv[0] == 0x85 && q2.rsv[1] == 3;
+        for (t = 0; t < NTRK; t++) {
+            for (i = 0; i < 53; i++) ok &= pt_get(&q2.t[t], i) == (int16_t)(i - 20);
+            for (i = 0; i < 10; i++) ok &= pt_get(&q2.t[t], 53 + i) == (int16_t)(i + 1);
+            for (i = 63; i < P_E0; i++) ok &= pt_get(&q2.t[t], i) == TP[i].def;
+            for (i = 0; i < 8; i++) ok &= pt_get(&q2.t[t], P_E0 + i) == (int16_t)(1000 + i);
+            ok &= q2.t[t].lock[0].param == P_E2 && q2.t[t].lock[0].val == -12 &&
+                  q2.t[t].mf[2] == 0xE1 && q2.t[t].step[3].note[0] == 60;
+        }
+        bad += check("FUN6 frozen 3816-byte fixture: parameters, engine locks, texture, steps; synth defaults and FX inherit", ok);
+        old.sum++;
+        bad += check("FUN6 bad checksum and truncated data rejected", !proj_import(&q2, &old, sizeof old) &&
+                     !proj_import(&q2, &old, sizeof old - 1));
+    }
+    {
+        uint32_t k;
+        for (k = 0; k < P_E0; k++) {
+            pt_set(&q.t[0], k, TP[k].min);
+            ok = pt_get(&q.t[0], k) == TP[k].min;
+            pt_set(&q.t[0], k, TP[k].max);
+            ok &= pt_get(&q.t[0], k) == TP[k].max;
+            if (!ok) bad += check("FUN7 signed-byte range roundtrip", 0);
+        }
+        song.g[G_RTYPE] = 3; song.g[G_RSIZE] = 115; song.g[G_RDAMP] = 22;
+        song.g[G_DTIME] = 6; song.g[G_DFDBK] = 99; song.g[G_DCOLOR] = 33; song.g[G_DMIX] = 77;
+        section_fx_mask = 3;
+        proj_capture(&q2);
+        proj_apply(&q2, 1);
+        ok = q2.rtype == 3 && q2.fx_mask == 3 && song.g[G_RTYPE] == 3;
+        q2.fx_mask = 0; song.g[G_RTYPE] = 0; song.g[G_RSIZE] = 70; song.g[G_DFDBK] = 20;
+        proj_apply(&q2, 0);
+        ok &= !song.g[G_RTYPE] && song.g[G_RSIZE] == 70 && song.g[G_DFDBK] == 20;
+        q2.fx_mask = 1; proj_apply(&q2, 0);
+        ok &= song.g[G_DFDBK] == 99 && song.g[G_DTIME] == 6 && song.g[G_DCOLOR] == 33 &&
+              song.g[G_DMIX] == 77 && !song.g[G_RTYPE] && song.g[G_RSIZE] == 70;
+        q2.fx_mask = 2; song.g[G_DFDBK] = 12; proj_apply(&q2, 0);
+        ok &= song.g[G_RTYPE] == 3 && song.g[G_RSIZE] == 115 && song.g[G_RDAMP] == 22 && song.g[G_DFDBK] == 12;
+        bad += check("FUN7 section FX: independent delay/reverb overrides, inherited values, reverb type and capture", ok);
+    }
     q2 = q;
     bad += check("2.6 SAVE > PROJECT > ERASE: an object of no bytes is no project (an empty slot, older SLOOP too)",
                  !proj_import(&q2, &q, 0));
