@@ -10,10 +10,19 @@
 > status, how to build and install it: [DUALCORE.md](DUALCORE.md). The second, branch `ram`, on top of it: four
 > reductions inside the RAM region (the MIDI note table in nibbles, one scratch for the main loop's short-lived
 > buffers, the user preset banks read where they are in the flash, the DRAWBAR state in the engine arena), 58.2 KB
-> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md). Branch `synth` builds on `ram` with expressive
-> MIDI, four modulation slots, a second LFO, LP24, ROOM/SPRING/HALL, Wave Terrain, sixteen new presets
-> and section effects. Builds, compatibility, host verification and pending hardware checks:
-> [SYNTH.md](SYNTH.md).
+> used of 96 KiB, the sound unchanged: [RAM.md](RAM.md). The third, branch **`synth`** (13/10/2026), on top of
+> `ram`: the synthesizer side, after a study of what Surge XT, Felucca 1.5.6, Plaits and the PreenFM2 do on
+> small hardware. **MIDI expression** (mod wheel, channel aftertouch, expression pedal), a **modulation matrix**
+> of four slots per track (12 sources, 23 destinations, after Felucca's), a second **LFO**, an **LP24** four-pole
+> resonant ladder on ANALOG and on each track's filter, **ROOM, SPRING and stereo HALL** reverbs beside SLOOP's
+> own (after Felucca's), a thirteenth engine, **TERRAIN** (Plaits' wave terrain, in fixed point), **16 new
+> sounds**, and **reverb and delay settings per song section**. Old projects and sounds play exactly as before
+> (the 182 reference renders are unchanged). What is new and where to find it: the **(synth)** marks in
+> [SLOOP.md](SLOOP.md) and [GUIDE.md](GUIDE.md); builds, formats, host verification and the pending hardware
+> checks: [SYNTH.md](SYNTH.md). Build it with `FELUCCA_SAMPLES=lite sh build.sh` (two sample sets, FLUTE and
+> SCRCH, left empty to make room; the full set fits with 232 bytes to spare). **Back up with the web editor
+> before installing it, and before going back:** a project or user preset saved by `synth` is not readable by
+> SLOOP 2.6. Not yet validated on an FM-1: host tests only.
 > Credits: SLOOP by isod89; Felucca by Leo Kuroshita (Hügelton Instruments); the second core's HAL from
 > [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal; this fork by Andre Rezemini, written with
 > Claude (the commits say so). GPL-3.0-only, as all of them.

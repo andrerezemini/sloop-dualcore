@@ -6,6 +6,24 @@ Everything SLOOP does, every button, every combination, every page, in one place
 
 SLOOP is a free, open-source (GPL-3.0) firmware for the M-VAVE FM-1, based on [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita / Hügelton Instruments. The short manual is [SLOOP.md](SLOOP.md); the project page is [README.md](README.md).
 
+> **This copy of the guide is sloop-lab's.** Everything marked **(synth)** is on the fork's `synth` branch (13/10/2026), not in SLOOP 2.6: the list is just below, the details are in the sections they belong to, and the build, formats and verification are in [SYNTH.md](SYNTH.md). The rest is SLOOP 2.6 as isod89 wrote it.
+
+---
+
+## What's new on the `synth` branch (synth)
+
+| What | Where | More |
+| --- | --- | --- |
+| **MIDI expression**: mod wheel (CC 1), channel aftertouch, expression pedal (CC 11) | the track the channel plays; routed by the matrix | [21. MIDI](#21-midi) |
+| **Modulation matrix**: 4 slots per track, SRC → DST × AMT | **SEL → MOD 1 … MOD 4** | [16. Every page](#16-every-page-knob-by-knob) |
+| **LFO 2**: a second LFO (RATE, WAVE, SYNC, PHS), a matrix source | **LFO → LFO 2** (the 2.6 page SYNC / TRIG / POL is now **LFO SYNC**) | [16. Every page](#16-every-page-knob-by-knob) |
+| **LP24**: a four-pole resonant ladder, self-oscillating at RES 127 | **EDIT → FILTER → TYPE LP24** on ANALOG; **FX → FILTER → RES, TYPE** on every track | [18. Effects](#18-effects-master-punch-in-per-track) |
+| **Four reverbs**: FDN (as before), ROOM, SPRNG, stereo HALL | **GLO → REVERB → TYPE** | [18. Effects](#18-effects-master-punch-in-per-track) |
+| **Reverb and delay per song section** | the SONG screen, **SELECT** → REVERB / DELAY, MODE INHERIT / SECTION | [14. Song mode](#14-song-mode-sections-chains-songs) |
+| **TERRAIN**, a thirteenth engine (Plaits' wave terrain, fixed point) | PRESETS, or EDIT on a track that plays it: *TERRAIN* and *ORBIT* pages | [17. The sounds](#17-the-sounds-and-the-twelve-engines) |
+| **16 new sounds**: 8 ANALOG, 8 TERRAIN (169 in all) | PRESETS, by kind | [17. The sounds](#17-the-sounds-and-the-twelve-engines) |
+| **Compatibility**: old projects and sounds unchanged; new saves not readable by 2.6 | back up before installing and before going back | [25. Backup, rescue, going back](#25-backup-rescue-going-back-troubleshooting) |
+
 ---
 
 ## How to read this guide
@@ -621,6 +639,10 @@ The song's settings can only be edited while it is stopped (*STOP FIRST*). An em
 
 ---
 
+### Section effects (synth)
+
+Each song section can carry its own reverb and delay. On the SONG screen, turn **SELECT**: after the chain page come **REVERB** and **DELAY**. KNOB 1 **MODE**: **INHERIT** (the section plays with the global settings, as in 2.6) or **SECTION** (its own); the **FX** button toggles it. On REVERB, KNOB 2–4 **TYPE**, **SIZE**, **DAMP**; on DELAY, **TIME**, **FEEDBACK**, **COLOR**, **MIX**. The song must be stopped to edit; **SAVE** keeps the settings with the chain. When a SECTION section starts, its settings replace the globals on the next bar; an INHERIT section keeps whatever is current (the globals, or the previous section's override). Stopping song mode restores the working project's globals. Sections saved by 2.6 inherit both. The web editor shows and edits them (Section effects).
+
 ## 15. The screens
 
 | Screen | How to get there | What it shows · what the knobs do |
@@ -650,10 +672,11 @@ Tap a button to open its first page (or the last one you used); **tap it again**
 | **ENV** | **ENV** | ATK attack | DEC decay | SUS sustain | REL release |
 | | **ENV DEST** | FLT: envelope → brightness (±) | PIT: envelope → pitch (±, the 808 punch) | SHP: envelope → the engine's shape (±) | ESYNC (2.6): OFF / ON, ATK DEC REL as note values |
 | **LFO** | **LFO** | RATE (Hz) | WAVE: SIN, TRI, SAW, SQR, S&H | PHS phase | FADE (fade-in time) |
-| | **LFO 2** (2.6) | SYNC: OFF, 4BAR, 2BAR, 1BAR, 1/2, 1/4, 1/8, 8T, 1/16, 16T, 1/32 | TRIG: NOTE / FREE | POL: BI / UNI | — |
+| | **LFO SYNC** (2.6; called LFO 2 there) | SYNC: OFF, 4BAR, 2BAR, 1BAR, 1/2, 1/4, 1/8, 8T, 1/16, 16T, 1/32 | TRIG: NOTE / FREE | POL: BI / UNI | — |
+| | **LFO 2** (synth) | RATE (Hz; 0 = off) | WAVE: SIN, TRI, SAW, SQR, S&H | SYNC: OFF … 1/32 | PHS phase — the second LFO, used as the matrix source LFO2 |
 | | **LFO DEST** | PIT: vibrato | FLT: filter wobble | SHP: shape | AMP: tremolo |
 | **FX** | **FX** (sends) | DST drive | CHO chorus send | DLY delay send | REV reverb send |
-| | **FILTER** | FILT: one-knob filter of the track — left LP, right HP, centre OFF | — | — | — |
+| | **FILTER** | FILT: one-knob filter of the track — left LP, right HP, centre OFF | RES (synth): resonance, an offset over the fixed value of before (0 = as before) | TYPE (synth): SVF / LP24 (the ladder on the low-pass side) | — |
 | | **SLICER** | SLCR: OFF, GATE, STUT (stutter) | PAT: pattern 1–16 | RATE: 1/8, 1/16, 1/32, 8T, 16T, 32T | DEPTH |
 | | **INSERT** (2.6) | INSRT: OFF, SOFT, HARD, FOLD, FUZZ, CRUSH, PHASR, FLANG, CHOR | A | B | C (what A B C are depends on the type: see [Per track](#per-track)) |
 | | **INSERT 2** (2.6) | MIX: dry / wet | — | — | — |
@@ -661,9 +684,10 @@ Tap a button to open its first page (or the last one you used); **tap it again**
 | | **REV/CHO** (global) | SIZE reverb size | DAMP reverb damping | CRT chorus rate | CDP chorus depth |
 | **SEL** | **SEL** | ROOT (the track's key) | SCL: the track's scale (SEL + KNOB 2 sets all three) | QNT keys: OFF, SNAP, WHITE | CHORD: OFF, TRIAD, 7TH, 9TH, SUS4, POWER |
 | | **SEL 2** | TRN transpose ±24 | STRUM ±60 ms | VLEAD: OFF / ON | — |
+| | **MOD 1** … **MOD 4** (synth) | SRC: OFF, LFO, ENV, VEL, KEY, RAND, MODW, AT, EXPR, S&H, SLEW, LFO2 | DST: OFF, PITCH, CUT, SHP, AMP, PAN, DIST, CHO, DLY, REV, RATE, VIB, E1 … E8, DEPTH, VEL, TIME | AMT −64 … 63 (lockable on a step) | — |
 | **EDIT** | **EDIT 1** | engine parameter 1 | 2 | 3 | 4 (see [the engines](#the-twelve-engines)) |
 | | **EDIT 2** | engine parameter 5 | 6 | 7 | 8 |
-| | **FILTER** (ANALOG only, 2.6) | TYPE: LP, BP, HP | CUT cutoff | RES resonance | KTR key tracking |
+| | **FILTER** (ANALOG only, 2.6) | TYPE: LP, BP, HP, LP24 (synth: the four-pole ladder) | CUT cutoff | RES resonance (LP24: self-oscillates at 127) | KTR key tracking |
 | | **VOICE** | VCE: POLY, MONO, LEG (legato), UNI (unison) | GLD glide | GLMOD: RATE / TIME | PRIO: LAST, LOW, HIGH (mono note priority) |
 | | **VOICE 2** | ALLOC: ROT (rotate) / REUSE | DTUNE (unison detune) | PAN | MUTE |
 | **ARP** | **ARP** | MODE: OFF, UP, DN, UPDN, RND, ORD | RATE: 1/4 … 16T | OCT: 1–4 octaves | GATE |
@@ -679,6 +703,7 @@ Tap a button to open its first page (or the last one you used); **tap it again**
 | | **TEXTURE 2** (2.6) | RATE: 1–16 bars | WHEN: PLAY / ALWAYS | DUCK: OFF / ON | — |
 | | **MIDI** (2.6) | CH1: track 1's MIDI channel (OFF, 1–16) | CH2: track 2's | CH3: track 3's | CH4: the drum track's (default 10) |
 | | **MIDI 2** (2.6) | IN: NOTES / CLOCK / CH 1–16 | OTHER: the channels no track has: SEL (the selected track) / OFF | OUT: KEYS / SEQ | BEND: the pitch bend's range, 1–12 semitones |
+| | **REVERB** (synth, global) | TYPE: FDN (SLOOP's own), ROOM, SPRNG, HALL (stereo) | SIZE | DAMP | — |
 | **SAVE** | **PRESETS** | the sound | the engine | — | — |
 | | **USER** | SLOT 1–32 | LOAD (GO) | ERASE (GO) | SAVE (GO) |
 | | **PROJECT** | SLOT 1–4 | ERASE (GO) | LOAD (GO) | SAVE (GO) |
@@ -692,8 +717,10 @@ Notes:
 - FM6 tracks ignore the ENV page and ENV DEST (each operator has its own envelope).
 - **ENV SYNC** (ENV DEST → ESYNC ON, 2.6): ATK, DEC and REL become note values of the tempo, from 0 through 1/64T … 1/4, 1/2 … to 4BAR, with triplets and dotted values; at 120 BPM an ATK of 1/4 lasts half a second, at 60 a whole one. They follow the tempo as it changes. OFF: times in milliseconds, as before.
 - **LFO 2** (2.6): **SYNC** locks the LFO's cycle to a note value of the tempo (RATE is then ignored; OFF: RATE, as before) · **TRIG** NOTE restarts the LFO at PHS on each new phrase (as before), FREE lets it run on · **POL** BI swings above and below the value, UNI only above it (a tremolo that only lowers the level, a wobble that only opens).
-- **FILTER** (EDIT, ANALOG only, 2.6): the ANALOG engine's filter as a **low-pass** (as before), **band-pass** or **high-pass**; CUT, RES and KTR are the same values as on EDIT 2.
-- On the screen, EDIT 1 and EDIT 2 carry the engine's own page names: ANALOG *OSC / FLT*, DIGITAL *OPS / MOD*, PHASE *PHS / LINE*, LOFI *CHIP / MOTN*, SAMPLE *SET / TONE*, VOICE *VOWL / TONE*, TRIO *OSC / TONE*, WHEEL *BARS / TONE*, GRAIN *GRAN / SPRY*, FM6 *OPS / PATCH*, PHYS *BODY / EXCT*, NOISE *SRC / MOVE*.
+- **FILTER** (EDIT, ANALOG only, 2.6): the ANALOG engine's filter as a **low-pass** (as before), **band-pass** or **high-pass**; CUT, RES and KTR are the same values as on EDIT 2. **(synth) LP24**: the four-pole ladder, 24 dB per octave, self-oscillating from RES 127 at 49 Hz and up; the SVF types sound exactly as before.
+- **(synth) MOD 1 … MOD 4** (SEL, after SEL 2): the modulation matrix. A slot adds **SRC × AMT** to **DST**, on top of the fixed ENV DEST and LFO DEST routings. Sources: the LFO, the amplitude envelope, the note's velocity, the key (higher = more), RAND (a new value per note), the mod wheel, channel aftertouch, the expression pedal, S&H (a random value drawn at each LFO cycle) and SLEW (the same, gliding from the previous one), LFO2. Destinations per voice: PITCH (up to ±12 semitones at AMT 63), CUT, SHP, AMP (positive opens, negative closes); per track and block: PAN, DIST, the three sends, the LFO's RATE and DEPTH, VIB (vibrato), **E1 … E8** (the engine's own knobs, within their range; list-type ones, an FM algorithm say, are skipped); per note: VEL (the velocity of each note) and TIME (a note played a little late). A slot with SRC, DST or AMT at 0 is off and costs nothing: a sound without slots is exactly the sound of 2.6. AMT is a lockable parameter. After Felucca 1.5's matrix (Leo Kuroshita).
+- **(synth) LFO 2** (LFO, after LFO SYNC): a second LFO with its RATE (0 = off), WAVE, SYNC (a note value, as the first LFO's) and PHS; it has no fixed destinations: pick **LFO2** as a matrix source. Its random values (S&H) are its own.
+- On the screen, EDIT 1 and EDIT 2 carry the engine's own page names: ANALOG *OSC / FLT*, DIGITAL *OPS / MOD*, PHASE *PHS / LINE*, LOFI *CHIP / MOTN*, SAMPLE *SET / TONE*, VOICE *VOWL / TONE*, TRIO *OSC / TONE*, WHEEL *BARS / TONE*, GRAIN *GRAN / SPRY*, FM6 *OPS / PATCH*, PHYS *BODY / EXCT*, NOISE *SRC / MOVE*, (synth) TERRAIN *TERRAIN / ORBIT*.
 - Any sound parameter on these pages can be **locked** on a step (see [Parameter locks](#parameter-locks)), except the pattern, arp, key and voice-mode ones.
 
 ---
@@ -737,6 +764,10 @@ Each engine's eight parameters are on **EDIT 1** (KNOB 1–4) and **EDIT 2** (KN
 | **NOISE** | noise, from analogue to digital: colours, crackle, shift registers, metallic tones | MODE: ANLG, DUST, LFSR, META · COLR white → pink → brown · FREQ · RES | TRK key tracking · DENS impulses (LFSR, META: LEN, the register) · DRFT drift · CRSH crush (LFSR, META: CLK, the clock above the key) |
 
 The **SAMPLE** sets are free recordings (CC0: Versilian Studios VSCO-2 CE and VCSL, Sonic Pi), coloured like a record through an old sampler. **GRAND PNO** is a Steinway recorded note by note; long notes fade as on the real one.
+
+### TERRAIN: wave terrain synthesis (synth)
+
+A thirteenth engine, after Plaits' wave terrain model (Mutable Instruments, Emilie Gillet, MIT), translated to fixed point for the FM-1 and checked against the original's equations. Two oscillators trace a path over a two-dimensional surface; what comes out is the height of the surface under the path: between a sine, a bell and a buzz, moving as the path moves. **EDIT 1 (TERRAIN):** **TERR** picks one of five surfaces and crossfades between neighbours, **RAD** the radius of the path, **X** and **Y** shift it across the surface. **EDIT 2 (ORBIT):** **RATIO** (1–8) the second oscillator's frequency ratio (the path's shape, from a circle to a rosette), **ROT** turns it, **DRV** saturates, **CUT** a low-pass after it. Eight sounds: ORBIT KEYS, RIDGE BASS, GLASS ORBIT, RIDGE PAD, TERRAIN BELL, CONTOUR LD, TOPO PLUCK, ISLAND DRONE (the last two use the matrix: the mod wheel on TERR, LFO 2 on X). Eight voices.
 
 ### FM6 and DX7 patches
 
@@ -803,6 +834,11 @@ The screen shows the 27 keys as a keyboard: the white keys in four rows of four,
 | 4 | **MOVE**: how much it breathes over RATE (its level and brightness) | — |
 
 The texture is saved with the project, and each song section (A–D) has its own. The generated sources use no memory; at SRC OFF nothing runs.
+
+### Reverb models and the track filter (synth)
+
+- **GLO → REVERB → TYPE.** **FDN** is SLOOP's reverb as it always was (the default: nothing changes until you turn the knob). **ROOM**: four damped combs and two all-passes, a mono room, dense and short. **SPRNG**: one spring in a tank, with its boing and its wobble, SIZE the loop's length. **HALL**: eight lines mixed by a conference matrix at half the sample rate, stereo (the mix goes to both sides, the difference to each), SIZE from half a second to about nine seconds of tail. SIZE and DAMP mean what they meant. Changing the type ramps the old tail down over one audio block and starts the new model from silence; the delay and the chorus keep their tails. Under punch-in **FREEZE** the three models hold what their lines contain (nothing new goes in while held). Saved with the project and, with the section effects, per song section. After Felucca 1.5.6's reverbs (Leo Kuroshita).
+- **FX → FILTER**, every track and the drums: **FILT** as before, plus **RES** (an offset over the fixed resonance of 2.6: 0 is 2.6's filter, to the right it rings, to the left it softens) and **TYPE**: **SVF** (as before) or **LP24**, the four-pole ladder on the filter's low-pass side (the high-pass side stays the SVF). With LP24 the track filter is an instrument: a slow close with RES up is the classic filter sweep. Loading a sound keeps the track's FILT, RES and TYPE.
 
 ### Per track
 
@@ -959,6 +995,10 @@ A learned CC sets that track's parameter whatever channel it comes on, and no lo
 
 ---
 
+### Expression: mod wheel, aftertouch, expression pedal (synth)
+
+On the track its channel plays, the **mod wheel** (CC 1), **channel aftertouch** (the pressure after the key is down) and the **expression pedal** (CC 11) are sources of the modulation matrix: SEL → MOD 1 … 4, SRC **MODW**, **AT** or **EXPR**, then a destination and an amount. Until a controller sends something the wheel and the aftertouch read 0 and the pedal reads full; **CC 121** (reset all controllers) puts them back. They are not in the fixed CC map and not learnable (MIDI LEARN), so a wheel does only what the matrix says; polyphonic aftertouch (per key) is not read. The serial console's `midi` command prints the three values of each synth track. WHEEL LEAD, AFTER BRASS and EXPR KEYS are sounds made for them.
+
 ## 22. USB audio
 
 On USB the FM-1 is also an audio input named **Felucca**: 44.1 or 48 kHz (the computer, phone or tablet picks; 48 kHz since 2.5, for the phones and apps that only take it), 16-bit stereo, class compliant, no driver. In your DAW, in Audacity or in a sampler app on your phone (with a USB-C cable or adapter) choose that input and record: you get the master output, exactly what the headphones play (after DUST, DUCK and FILT; the click and count-in too if they are on). MIDI, the editor and the installer keep working on the same cable.
@@ -1096,6 +1136,10 @@ A 2.4 backup restores into 2.4 (or later) only. **Save a backup before every upd
 | An install stopped half-way | the FM-1 waits in update mode: press **INSTALL** again |
 | Buttons or knobs do the wrong thing | hold **OCT− + OCT+** while switching on, or HOME menu → SYSTEM → HARDWARE CALIBRATION |
 | A developer needs UBOOT | hold **OCT− + OCT+** for 5 s while stopped (*UPDATE MODE IN 3…*; let go to cancel) |
+
+### Going back from `synth` (synth)
+
+A project slot or a user-preset bank **saved** by `synth` is written in its own formats (project FUN7, preset banks version 2): SLOOP 2.6 reads them as empty (the bytes stay in the flash; a second save there overwrites the twin copy). So: **make a backup with the web editor before installing `synth`, and again before going back** to 2.6 or to the official firmware; restore it afterwards with the firmware it was made on. A device that only played and never saved under `synth` goes back with its projects: at boot, `synth` leaves 2.6's slots in the flash as they are until you save over them. Everything of 2.6 and older loads in `synth` as it is.
 
 ### Going back to the official firmware
 
