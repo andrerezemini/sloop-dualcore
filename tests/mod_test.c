@@ -47,6 +47,14 @@ int main(void) {
     memset(t->p+P_M1SRC,0,12*sizeof(int16_t));slot(t,0,MS_MODW,MD_VEL,-64);assert(mod_note(t,60,100)==1);
     slot(t,0,MS_MODW,MD_TIME,63);assert(mod_time(t,10000)>19000);
     slot(t,0,MS_MODW,MD_TIME,0);assert(mod_time(t,10000)==10000);
+    /* ARP TIME sees the note it just started, including its KEY/RAND/VEL. */
+    host_preset(t,0,0);memset(t->p+P_M1SRC,0,12*sizeof(int16_t));
+    slot(t,0,MS_KEY,MD_TIME,63);t->m_key=0;t->p[P_AMODE]=1;t->p[P_APROB]=127;
+    t->nheld=1;t->held[0]=84;t->arp_new=1;t->arp_note=0;song.playing=0;
+    arp_tick(t,0);
+    assert(t->m_key==84&&t->arp_note==84);
+    assert(t->arp_off==mod_time(t,div_units(t->p[P_ARATE]%NDIV_SHORT)*(uint32_t)t->p[P_AGATE]/128u));
+    t->p[P_AMODE]=0;t->nheld=0;
     /* RATE0 LFO2 is neutral; every waveform and sync setting stays Q15 bounded. */
     for(int w=0;w<5;w++)for(int sy=0;sy<11;sy++) {
         t->p[P_L2RATE]=60;t->p[P_L2WAVE]=w;t->p[P_L2SYNC]=sy;

@@ -1176,8 +1176,8 @@ static void arp_tick(track_t *t, uint32_t adv)
         if (n == KB_SILENT)
             return;
         t->arp_note = (uint8_t)n;
-        t->arp_off = mod_time(t, slen * (uint32_t)t->p[P_AGATE] / 128u);
         trk_note_on(t, n, 100);
+        t->arp_off = mod_time(t, slen * (uint32_t)t->p[P_AGATE] / 128u);
         seq_out_on(t, n, 100);
         if (((song.rec >> trk_index(t)) & 1u) && song.playing)
             rec_note(t, n, 100, 0, 0);

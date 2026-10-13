@@ -13,9 +13,12 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT=build/host
-CC="${CC:-cc} -O2 -w -Ibuild/gen -Ifirmware/src"
+SAMPLE_GEN="${HOST_SAMPLE_GEN:-build/host-full-gen}"
+mkdir -p "$OUT" "$SAMPLE_GEN"
+FELUCCA_SAMPLES=full python3 tools/gen_samples.py "$SAMPLE_GEN/felucca_samples.h" || exit 1
+CC="${CC:-cc} -O2 -w -I$SAMPLE_GEN -Ibuild/gen -Ifirmware/src"
 fail=0
-[ -x "$OUT/regress" ] || $CC -o "$OUT/regress" tests/regress.c -lm || exit 1
+$CC -o "$OUT/regress" tests/regress.c -lm || exit 1
 $CC -o "$OUT/mix_split_test" tests/mix_split_test.c -lm || exit 1
 
 golden() {   # $1 = the mode's name, the rest its env: regress's golden renders, health, voices, no crash
@@ -46,7 +49,7 @@ split "CORES=1" CORES=1
 split "CORES=2" CORES=2
 split "CORES=2 CHAOS=7" CORES=2 CHAOS=7
 split "CORES=2 CPU1_TIMEOUT_AT=700" CORES=2 CPU1_TIMEOUT_AT=700
-TSAN="${CC_UB:-cc} -O1 -g -w -fsanitize=thread -Ibuild/gen -Ifirmware/src"
+TSAN="${CC_UB:-cc} -O1 -g -w -fsanitize=thread -I$SAMPLE_GEN -Ibuild/gen -Ifirmware/src"
 if $TSAN -o "$OUT/mix_split_tsan" tests/mix_split_test.c -lm 2>/dev/null; then
     if env CORES=2 CHAOS=3 TSAN_OPTIONS="halt_on_error=1" "$OUT/mix_split_tsan" QUICK > "$OUT/split_tsan.log" 2>&1; then
         echo "   under ThreadSanitizer (CORES=2 CHAOS=3, the splits 0, 15, -1): $(tail -n 1 "$OUT/split_tsan.log" | sed 's/.*: //'), no race"
