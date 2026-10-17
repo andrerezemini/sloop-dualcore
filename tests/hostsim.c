@@ -29,6 +29,7 @@
 #undef memcpy
 #undef memcmp
 static struct { volatile uint32_t notes, buttons; } fm1_in;
+static volatile uint32_t fm1_remote_btn;           /* (2.7, fm1_input.h: the buttons held over MIDI) */
 static void fm1_irq_off(void) {}                 /* (the host: one thread) */
 static void fm1_irq_on(void) {}
 #include "../firmware/src/core.h"

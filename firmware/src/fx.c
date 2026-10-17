@@ -1072,8 +1072,13 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (djf_block(f, render_p(t)[P_TFLT], &fc))
                 track_filter_run(t, f, &fc, b, n, 0);
         }
-        int32_t lvl0 = t->lvl ? t->lvl : lvl, dl = (lvl - lvl0) >> CTL_LOG2;   /* a new sound's trim: ramped */
-        t->lvl = lvl;
+        int32_t lvl0, dl, gl0, dgl, gr0, dgr;          /* (2.7) LEVEL (and a new sound's trim) and PAN glide (drums.c
+                                                         * mix_glide), ramped sample by sample inside the block */
+        if (!t->mix_on)
+            t->lvl = lvl, t->gpl = gl, t->gpr = gr, t->mix_on = 1;
+        lvl0 = t->lvl, gl0 = t->gpl, gr0 = t->gpr;
+        t->lvl = mix_glide(lvl0, lvl), t->gpl = mix_glide(gl0, gl), t->gpr = mix_glide(gr0, gr);
+        dl = (t->lvl - lvl0) >> CTL_LOG2, dgl = t->gpl - gl0, dgr = t->gpr - gr0;
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * (lvl0 + dl * (int32_t)i)) >> 10, a;   /* pre-shift: 8 loud voices */
             int32_t xs, g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
@@ -1089,6 +1094,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
                 mx->sd[i] += mulq15(xs, d);
             if (r)
                 mx->sr[i] += mulq15(xs, r);
+            gl = gl0 + ((dgl * (int32_t)i) >> CTL_LOG2), gr = gr0 + ((dgr * (int32_t)i) >> CTL_LOG2);   /* (2.7) */
             mx->l[i] += ((x >> 4) * gl) >> 8;           /* (x may pass 2^19: >> 4 first) */
             mx->r[i] += ((x >> 4) * gr) >> 8;
         }
@@ -1557,7 +1563,7 @@ static void mix_block(int32_t *out, uint32_t n)
         acc[0].l[i] = acc[0].r[i] = acc[0].sc[i] = acc[0].sd[i] = acc[0].sr[i] = 0;
     {   /* REV / ECHO THROW (2.6): the sends glide to full and back over ~12 ms (17 blocks); set before the hand-off:
          * the units on both cores read them (send_thr) */
-        uint32_t q = thr_req;
+        uint32_t q = thr_req | thr_ed;                  /* (2.7: the editor's LIVE page too) */
         thr_rev = (q & 1u) ? (thr_rev + 1928 > 32767 ? 32767 : thr_rev + 1928) : (thr_rev > 1928 ? thr_rev - 1928 : 0);
         thr_dly = (q & 2u) ? (thr_dly + 1928 > 32767 ? 32767 : thr_dly + 1928) : (thr_dly > 1928 ? thr_dly - 1928 : 0);
     }

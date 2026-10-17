@@ -1,13 +1,21 @@
 # SLOOP on both cores: the `dualcore` branch of sloop-lab
 
 A thin fork of [SLOOP](https://github.com/isod89/sloop-fm1) (isod89) that makes the M-VAVE FM-1's second
-processor core available to the audio render. Everything else is SLOOP, unchanged; the branch is a short
+processor core available to the audio render. Everything else is SLOOP, unchanged; the work is a short
 series of patches meant to be re-applied on each SLOOP release, and offered upstream.
 
 The second core's start-up sequence is [X0X](https://github.com/charlesvestal/fm1-x0x)'s (Charles Vestal),
 after the findings of [Melodee](https://github.com/keremimo/melodee) (Kerem Kilic); X0X has run its drum
 machines on core 1 since 1.0 (10/10/2026). This branch brings that HAL into SLOOP and, in the following
 patches, splits SLOOP's `mix_block` into units that render on both cores with a bit-identical result.
+
+> **16/10/2026: this series is in SLOOP 2.7.** Upstream took it whole (pull request #111; this file and
+> RAM.md are the ones SLOOP ships), with three changes of its own: 2ND CORE **OFF** no longer starts core 1 at
+> all (the boot is 2.6's) and **ON** takes effect at the next power-on; the two supplies are raised at boot to
+> M-VAVE's levels (SYSVDD 1.38 V, VDC14 1.60 V, after X0X 1.0.9; ABOUT shows them); and SLOOP 2.7.1 holds core
+> 1 with the bus-invalid traps off (`fm1_sys.h fm1_cpu1_halt`, after Felucca 1.6.1): the plain hold below, under
+> Felucca's `FM1_GUARD_BUS`, turned a late core 1 into a FELUCCA CRASH screen and a reboot instead of a glitch.
+> The branch `dualcore` is frozen at the tag `dualcore-2.6`; the fork's work goes on in `synth`, on 2.7.1.
 
 ## Status
 

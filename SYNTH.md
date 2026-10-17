@@ -1,7 +1,8 @@
 # SLOOP synth branch
 
-`synth` starts at `ram` commit `9843161` (SLOOP 2.6 plus the dual-core and RAM
-work). S0–S8 of the October 12 synth plan are implemented. The new features are
+`synth` started at `ram` commit `9843161` (SLOOP 2.6 plus the dual-core and RAM
+work) and sits on **SLOOP 2.7.1** since the merge of 17/10/2026 (SLOOP 2.7 took the
+dual-core and RAM work itself; CLAUDE.md has the merge's decisions). S0–S8 of the October 12 synth plan are implemented. The new features are
 opt-in: old sounds retain FDN, SVF, a disabled matrix and a disabled second LFO.
 The 182 existing golden renders remain unchanged; sixteen new renders cover
 the appended presets. Hardware acceptance and public upstream submissions are
@@ -56,9 +57,10 @@ FELUCCA_SAMPLES=lite FELUCCA_FPU_PROBE=1 sh build.sh
 FELUCCA_SAMPLES=lite FELUCCA_CPU1=0 sh build.sh
 ```
 
-The sample profile remains `full` by default. Since 13/10 the full profile
-links again (581,332 of 581,564 bytes: 232 free, so any upstream growth will
-push it over; `lite` is the build to carry). Lite keeps all eight set numbers
+The sample profile remains `full` by default in `build.py`, but on SLOOP 2.7.1
+the full profile no longer links: 3,000 bytes over the app slot with the boot
+logo, 568 bytes over with `FELUCCA_LOGO_TEXT=1` (build.py retries that by itself);
+on 2.6 it linked with 232 bytes free. `lite` is the build to carry. Lite keeps all eight set numbers
 but leaves FLUTE and SCRCH empty; their three factory presets (LOFI FLUTE,
 SCRATCH, FLUTE DUST) stay in the engines' tables, so every preset number means
 the same sound in both builds (projects and the web editor store numbers), and
@@ -82,9 +84,9 @@ development packages with the existing FM-1_900 identity, not public releases.
 | Combined S0 optimizations | 6,992 bytes saved against S0 control |
 | Lite sample data reduction | 54,284 bytes; 54,528 including presets/metadata |
 | Screen font as an LZ4 block (13/10) | 3,228 bytes saved, 5,376 of RAM used |
-| Normal lite image / free app space | 526,964 / 54,600 bytes (13/10; 528,376 / 53,188 on 12/10) |
-| Full sample image / free app space | 581,332 / 232 bytes (13/10; refused by 1,368 bytes on 12/10) |
-| RAM / lowram / pool | 64,908 / 23,280 / 333,636 bytes |
+| Normal lite image / free app space | 530,180 / 51,384 bytes on SLOOP 2.7.1 (17/10); 526,964 / 54,600 on 2.6 (13/10) |
+| Full sample image / free app space | does not link on 2.7.1: 568 bytes over with the text logo (17/10); 581,332 / 232 on 2.6 (13/10) |
+| RAM / lowram / pool | 65,548 / 23,280 / 333,636 bytes on 2.7.1 (64,908 / 23,280 / 333,636 on 2.6) |
 | Original render hashes | 182 preserved; 16 appended (198 full / 195 lite) |
 | Ladder slope | −24.06 dB/octave, host impulse measurement |
 | Terrain equation reference | RMS 0.000377; max 0.001932, normalized full scale |

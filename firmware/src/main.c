@@ -6,6 +6,9 @@
 #include "cold.h"
 #include "fm1_fpu_probe.h"
 #endif
+#ifndef UI_SMALL                 /* (2.7) compiled for size: not the audio path (gfx.c UI_SMALL); the host tests: nothing */
+#define UI_SMALL
+#endif
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 extern uint32_t _c1_start[], _c1_end[], _c1_load[];
@@ -17,7 +20,7 @@ extern uint32_t _lr_start[], _lr_end[];
  * region nothing. Proved once at boot: every word takes and gives back a pattern, then the region is zeroed as
  * .pool is. Console: lowram (1 proved, 2 a word failed: the build must not rely on this SRAM). */
 static uint8_t lowram_ok;
-static uint8_t lowram_test(void)
+UI_SMALL static uint8_t lowram_test(void)
 {
     uint32_t *d, bad = 0;
     for (d = _lr_start; d < _lr_end; d++)
@@ -28,7 +31,7 @@ static uint8_t lowram_test(void)
         *d = 0;
     return bad ? 2u : 1u;
 }
-static uint32_t lowram_state(void) { return lowram_ok; }   /* console.c */
+UI_SMALL static uint32_t lowram_state(void) { return lowram_ok; }   /* console.c */
 
 /* core 0's two stacks (app.ld: 24 KB from _ustack_lo, 8 KB from _sstack_lo), never measured before: painted at boot
  * with a mark up to 512 B below whichever of sp / ssp / usp sits in each region (the live frames), so the console
@@ -36,7 +39,7 @@ static uint32_t lowram_state(void) { return lowram_ok; }   /* console.c */
  * region the main loop runs on (sp). What they say decides whether _guard0 may move up and the pool grow. */
 extern char _ustack_top[];
 #define STACK_MARK 0x4B4D5453u                  /* "STMK" */
-static void stack_paint(char *lo, char *top)
+UI_SMALL static void stack_paint(char *lo, char *top)
 {
     uint32_t a = (uint32_t)(uintptr_t)lo, lim = (uint32_t)(uintptr_t)top, p[3], i, *d;
     p[0] = fm1_sp();                            /* (fm1_guard.h) */
@@ -48,16 +51,16 @@ static void stack_paint(char *lo, char *top)
     for (d = (uint32_t *)lo; (uint32_t)(uintptr_t)d < lim; d++)
         *d = STACK_MARK;
 }
-static uint32_t stack_free(const char *lo, const char *top)   /* bytes of marks still in place, from the guard band up */
+UI_SMALL static uint32_t stack_free(const char *lo, const char *top)   /* bytes of marks still in place, from the guard band up */
 {
     const uint32_t *d = (const uint32_t *)lo;
     while ((const char *)d < top && *d == STACK_MARK)
         d++;
     return (uint32_t)((const char *)d - lo);
 }
-static uint32_t stack_free_main(void) { return stack_free(_ustack_lo, _ustack_top); }   /* console.c */
-static uint32_t stack_free_sup(void) { return stack_free(_sstack_lo, _sstack_top); }
-static uint32_t stack_sp(void) { return fm1_sp(); }
+UI_SMALL static uint32_t stack_free_main(void) { return stack_free(_ustack_lo, _ustack_top); }   /* console.c */
+UI_SMALL static uint32_t stack_free_sup(void) { return stack_free(_sstack_lo, _sstack_top); }
+UI_SMALL static uint32_t stack_sp(void) { return fm1_sp(); }
 
 
 /* TIMER5 outranks ALNK0 (timer5_start): the scan keeps its pace while a half buffer renders. Nested in
@@ -113,7 +116,7 @@ void fm1_timer5_irq(void)
 }
 extern void isr_timer5(void);
 
-static void timer5_start(void)                 /* OSC /4 = 6 MHz, PRD 600 -> 10 kHz */
+UI_SMALL static void timer5_start(void)                 /* OSC /4 = 6 MHz, PRD 600 -> 10 kHz */
 {
     /* above ALNK0 (3): the tick may nest into the audio render (a few us; plain registers, the
      * MIDI rings are single-producer / single-consumer). Below it, a tick waited for the render
@@ -122,7 +125,7 @@ static void timer5_start(void)                 /* OSC /4 = 6 MHz, PRD 600 -> 10 
     fm1_timer5_start(isr_timer5, 4);
 }
 
-static void hexs(char *b, uint32_t v)
+UI_SMALL static void hexs(char *b, uint32_t v)
 {
     uint32_t i;
     for (i = 0; i < 8u; i++)
@@ -130,7 +133,7 @@ static void hexs(char *b, uint32_t v)
     b[8] = 0;
 }
 
-static void fm1_fault(const fm1_crash_t *c)
+UI_SMALL static void fm1_fault(const fm1_crash_t *c)
 {
     char b[12];
     uint32_t t0;
@@ -147,14 +150,24 @@ static void fm1_fault(const fm1_crash_t *c)
     draw_text_box(10, 102, 220, &FONT_S, b, C_WHITE, 0);
     hexs(b, c->rets);
     draw_text_box(10, 120, 220, &FONT_S, b, C_WHITE, 0);
+    hexs(b, c->sp);                                     /* (2.7.1) more to read on a photo of it: the stack, */
+    draw_text_box(10, 144, 220, &FONT_S, b, C_WHITE, 0);
+    {                                                   /* the second core (state 3 = running, how many late jobs) */
+        char t[28];
+        str_cpy(t, "C1 ", sizeof t);
+        fmt_int(t + str_len(t), (int32_t)cpu1_state);
+        str_cpy(t + str_len(t), " LATE ", 7);
+        fmt_int(t + str_len(t), (int32_t)(cpu1_timeouts > 99u ? 99u : cpu1_timeouts));
+        draw_text_box(10, 162, 220, &FONT_S, t, C_WHITE, 0);
+    }
     t0 = fm1_ticks();
-    while ((uint32_t)(fm1_ticks() - t0) < 4000u * 1000u * FM1_TICKS_PER_US)
+    while ((uint32_t)(fm1_ticks() - t0) < 10000u * 1000u * FM1_TICKS_PER_US)   /* (2.7.1: 10 s, time for a photo) */
         ;
     fm1_reboot();
 }
 
 /* power-on: three parts with their default sounds (TRK_DEF), the drum track, empty patterns */
-static void felucca_init(void)
+UI_SMALL static void felucca_init(void)
 {
     uint32_t i;
     for (i = 0; i < G_COUNT; i++)
@@ -178,13 +191,17 @@ static void felucca_init(void)
     song.g[G_MIDI] = (int16_t)lights_mout;
     song.g[G_ROUTE] = (int16_t)lights_min;
     song.g[G_CH1] = midi_set[0], song.g[G_CH2] = midi_set[1], song.g[G_CH3] = midi_set[2];   /* (2.6: GLO > MIDI, */
-    song.g[G_DRCH] = midi_set[3], song.g[G_CHOTH] = midi_set[4], song.g[G_BEND] = midi_set[5];   /* settings of the FM-1) */
+    song.g[G_DRCH] = midi_set[3], song.g[G_CHOTH] = midi_set[4], song.g[G_BEND] = midi_set[5];
+    song.g[G_FXCH] = midi_set[6];
+    song.g[G_DRMAP] = midi_set[7];                   /* (2.7) GLO > MIDI 3: DR MAP */
+    song.g[G_CLKOUT] = midi_set[9];                  /* (2.7) GLO > MIDI 3: CLK OUT */
+    song.g[G_RMCH] = midi_set[8];                    /* (2.7) GLO > MIDI 3: REMOTE */                    /* (2.7) GLO > MIDI 3: FX CH */   /* settings of the FM-1) */
     layers_init();                            /* the panel's layer buttons for the keys (ui_layers.c) */
     go_home();
     ui.force = 1;
 }
 
-static void FELUCCA_COLD_FN fm1_main(void)
+UI_SMALL static void fm1_main(void)
 {
     int32_t knob = 512 * 16;
     uint32_t healthy_since;
@@ -221,6 +238,9 @@ static void FELUCCA_COLD_FN fm1_main(void)
 #if FELUCCA_CDC
     usb_cdc_on = usb_serial;                            /* menu USB SERIAL (persist_boot read it): before USB starts */
 #endif
+#if FELUCCA_UAC && FELUCCA_UAC_48K
+    usb_rate_mode = usb_rate;                           /* menu USB RATE (2.7 beta), the same way */
+#endif
     usb_start();
 #if FELUCCA_UART
     uart_midi_init();
@@ -255,6 +275,14 @@ static void FELUCCA_COLD_FN fm1_main(void)
                 uint32_t k10;
                 knob += (a * 16 - knob) / 8;
                 k10 = (uint32_t)(knob / 16);
+                if (ed_master) {                               /* (2.7) the LIVE page's level, until the knob turns */
+                    if (ed_master_k == 0xFFFFu)
+                        ed_master_k = (uint16_t)k10;
+                    if (k10 + 48u < ed_master_k || k10 > ed_master_k + 48u)
+                        ed_master = 0;
+                    else
+                        k10 = (ed_master - 1u) * 1023u / 126u;
+                }
                 song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
             }
         }
@@ -342,10 +370,12 @@ static void FELUCCA_COLD_FN fm1_main(void)
     }
 }
 
-void FELUCCA_COLD_FN fm1_cstart(void)
+UI_SMALL void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt, boot_mode;
     fm1_time_init();
+    fm1_supplies_stock();                       /* (2.7) VDC14 1.60 V, SYSVDD 1.38 V, as M-VAVE's firmware: both cores
+                                                 * read the flash and SRAM right on every unit (fm1_sys.h) */
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;
     src = fm1_boot.rst_src;

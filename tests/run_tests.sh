@@ -142,6 +142,13 @@ $CC -DT_CDC=2 -DHALF_FRAMES=$HALF -o "$OUT/uac_test_seroff" tests/uac_test.c -lm
 run "USB audio input: descriptors (CDC built in, menu USB SERIAL OFF), ring and packets" "$OUT/uac_test_seroff"
 run "USB SERIAL OFF: the descriptors of a build without CDC, byte for byte" \
     sh -c "[ \"\$(UAC_DUMP=1 '$OUT/uac_test_seroff' | tail -n 2)\" = \"\$(UAC_DUMP=1 '$OUT/uac_test_nocdc' | tail -n 2)\" ] && echo same"
+$CC -DT_CDC=2 -DT_RATE=1 -DHALF_FRAMES=$HALF -o "$OUT/uac_test_441" tests/uac_test.c -lm
+run "USB audio input, menu USB RATE 44.1 (2.7): descriptors, ring and packets" "$OUT/uac_test_441"
+$CC -DT_CDC=1 -DT_RATE=2 -DHALF_FRAMES=$HALF -o "$OUT/uac_test_48" tests/uac_test.c -lm
+run "USB audio input, menu USB RATE 48 (2.7): descriptors, ring and packets" "$OUT/uac_test_48"
+$CC -w -DT_CDC=0 -DFELUCCA_UAC_48K=0 -DHALF_FRAMES=$HALF -o "$OUT/uac_test_no48" tests/uac_test.c -lm
+run "USB RATE 44.1: the descriptors of a build without 48 kHz (SLOOP 2.4), byte for byte" \
+    sh -c "[ \"\$(UAC_DUMP=1 '$OUT/uac_test_441' | tail -n 2)\" = \"\$(UAC_DUMP=1 '$OUT/uac_test_no48' | tail -n 2)\" ] && echo same"
 uac_in_app() { ${CC%% *} -E -Ibuild/gen -Ifirmware/hal -Ifirmware/src firmware/src/felucca.c 2>/dev/null | grep -q uac_service; }
 run "USB audio input: built into the firmware (FELUCCA_UAC set before usb.c)" uac_in_app
 
@@ -189,12 +196,19 @@ run "regression: target cost of the render loops" python3 tests/target_budget.py
 run "the render split over the two cores: every mode of the second core's host double (tests/cpu1_modes.sh)" sh tests/cpu1_modes.sh
 
 run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/install_test.py
-run "the offline editor (one file, nothing next to it)" python3 tests/site_test.py
+run "the offline editor (one file, nothing next to it); the offline site (sw.js, manifest)" python3 tests/site_test.py
 
 if command -v node >/dev/null 2>&1; then
     run "web pages: editor protocol, samples, packages, update protocol" node web/test_web.mjs
+    rm -rf "$OUT/pwa-site" && python3 web/make_site.py build/felucca.fwsc 2.7 "$OUT/pwa-site" >/dev/null &&
+        run "the site without internet in Chromium (skipped without Playwright)" node tests/pwa_test.mjs "$OUT/pwa-site"
 else
     echo "== skip web tests (no node)"
 fi
 
+# the browser audio preview (web editor): the same engines in WASM as on the host, when it is built
+# (python3 tools/build_preview.py: Emscripten, or clang + wasm-ld)
+if [ -f build/preview/sloop-preview.wasm ]; then
+    run "the editor's audio preview: WASM == host, all 12 engines" sh tests/run_preview_tests.sh
+fi
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

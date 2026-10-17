@@ -99,6 +99,9 @@ def use_docker():
     return os.environ.get("JIELI_DOCKER", "0" if native else "1") == "1"
 
 
+LAST_ERR = ""                       # what the last failed toolchain call said (build_app: XIP overflowed)
+
+
 def tc(tool, *args):
     """run a toolchain binary (pi32v2/bin/..., common/bin/...) with cwd SRC; paths relative to SRC"""
     rel = [str(Path(a).resolve().relative_to(SRC)) if isinstance(a, Path) else a for a in args]
@@ -111,7 +114,9 @@ def tc(tool, *args):
         cmd = [str(toolchain() / tool), *rel]
     r = subprocess.run(cmd, cwd=SRC, capture_output=True, text=True)
     if r.returncode:
-        sys.stderr.write(r.stdout + r.stderr)
+        global LAST_ERR
+        LAST_ERR = r.stdout + r.stderr
+        sys.stderr.write(LAST_ERR)
         if tool.endswith("/ld") and "region `XIP' overflowed" in r.stderr:
             raise SystemExit("build: app flash exhausted; rebuild with FELUCCA_SAMPLES=lite")
         raise SystemExit(f"build: {tool} failed")
@@ -212,7 +217,7 @@ def build_loader():
 def build_app():
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_CDC", "FELUCCA_UART",
-                 "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_CPU1"):
+                 "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_CPU1", "FELUCCA_LOGO_TEXT"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -378,7 +383,15 @@ def main():
         gen, ldr = ex.submit(generate), ex.submit(build_loader)
         gen.result()
         ota = ldr.result()
-    img, syms, dis, rt = build_app()
+    try:
+        img, syms, dis, rt = build_app()
+    except SystemExit:
+        # (2.7) the flash is full: the boot logo as text ("S" and "LOOP" in the tracks' colours, splash.c) gives 4.6 KB
+        if "overflow" not in LAST_ERR or os.environ.get("FELUCCA_LOGO_TEXT") == "1":
+            raise
+        print("build: the flash is full: building again with the boot logo as text (FELUCCA_LOGO_TEXT=1, 4.6 KB less)")
+        os.environ["FELUCCA_LOGO_TEXT"] = "1"
+        img, syms, dis, rt = build_app()
     symbol_report(syms, len(img))
     errors, notes = check(img, syms, dis, rt)
     hal_err = mmio_check()

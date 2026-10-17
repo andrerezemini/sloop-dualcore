@@ -1,8 +1,59 @@
 # sloop-lab: project memory
 
+## Base: SLOOP 2.7.1 (merged 17/10/2026)
+
+`synth` sits on **SLOOP 2.7.1** (`4ec1ac8`, 16/10/2026) since one merge commit of 17/10/2026. Upstream took
+the fork's `dualcore` and `ram` series whole into 2.7 (pull request #111: `hal/fm1_cpu1.{h,S}`, `cpu1.{c,h}`,
+`.lowram`, the stack painting, `st_xip`, the scratch union, the nibbles, DRAWBAR in the arena, the four cpu1
+tests, DUALCORE.md and RAM.md are byte-identical to the fork's `for-upstream`), so those branches are **done**:
+frozen at the tags `dualcore-2.6`, `ram-2.6`, `for-upstream-2.6` (and `synth-2.6`, the branch before the merge);
+`main` tracks upstream. Upstream's own edits to that code: `cpu1.c` (`cpu1_off` read before boot: 2ND CORE OFF
+never starts core 1, ON takes effect at the next power-on; `cpu1_supplies()` for ABOUT), `main.c` (`UI_SMALL`,
+`fm1_supplies_stock()` SYSVDD 1.38 V / VDC14 1.60 V at `fm1_cstart`, after X0X 1.0.9), `scratch.h` (no OTA
+member: `ota.c` keeps its own `ota_dec`), and 2.7.1's `fm1_sys.h fm1_cpu1_halt()` (after Felucca 1.6.1): the
+hold of core 1 with the bus-invalid traps off (DBG_MSG bits 4, 5, 16..21). The old plain hold, under
+`FM1_GUARD_BUS`, made a late core 1 (8 ms, `fm1_cpu1_wait`) end in a FELUCCA CRASH and a reboot instead of a
+glitch: X0X 1.0.3 has the same two lines; the fork carried them. Every build of the fork before this merge has
+that bug.
+
+**How the merge was made** (do it this way again for 2.8 if upstream has meanwhile taken more of the fork):
+`git merge-tree --write-tree --merge-base=ram synth v2.7.1` (the merge base forced to `ram`, so the files
+upstream copied verbatim do not conflict add/add), the tree checked out with `git read-tree --reset -u`, the 23
+conflicting files resolved by hand (`tools/build.py`, `web/editor.html`, `web/test_web.mjs`, 4 docs, and
+`core.h drums.c editor.c gfx.c icons.c main.c ota.c project.c seq.c splash.c ui.c ui_draw.c ui_input.c
+ui_layers.c ui_song.c upreset.c`), then `git commit-tree` with both parents (v2.7.1 and the old `synth`), so the
+19 synth commits stay in the history and the push was a fast-forward. From now on the merge base with upstream is
+v2.7.1 and a plain `git merge origin/main` is right again. Decisions taken in the resolution:
+
+- `UI_SMALL` (2.7, `__attribute__((minsize))`) and the fork's `FELUCCA_COLD_FN` (`cold.h`) are the same
+  attribute: where both sides annotated a function, upstream's `UI_SMALL` was kept; `cold.h` stays for the
+  fork's own files.
+- `G_RTYPE` (the reverb TYPE) comes **after** 2.7's `G_FXCH G_DRMAP G_RMCH G_CLKOUT`, so 2.7's ids stay 2.7's:
+  `G_RTYPE` = 49, `G_COUNT` = 50 (`web/editor.html`: `pr.g[49]`, `["rtype",49]`, `EXPECT.gcount` has 50; the
+  mock pushes TYPE last; `test_web.mjs` expects gcount 50).
+- Projects: still FUN7 (synth) on top of 2.7's FUN6 tricks, which FUN7 keeps room for: `rsv[0]` bit 0x40
+  (saved by 2.7+: KBD HOLD's default), the drum TUNE / DECAY in the drum track's `e[1..7]` with a check in
+  `g[G_SAVE]` (`drum_tw_put/get`); `proj_from_v6` copies `g`, `rsv` and `e`, so a 2.7 project keeps them.
+  The settings word: 2.7 took bits 26 (2ND CORE OFF), 27 (KNOB ACCEL OFF), 28-29 (USB RATE), 30 (theme),
+  31 (REC QUANT OFF); the side record (theme + favourites) rides on `st_side`; `midi_set` has 10 entries.
+- Favourites (2.7, `ui.c fav*`) store BANK indices; `fav_list` maps them to the offered list (`bank_vis`, the
+  lite build hides the empty sets' presets) and skips a hidden one; `base_kind` reads `bank_vis` too.
+- `seq.c arp_tick`: 2.7's `arp_end / arp_step` structure with the matrix's `mod_time` on `arp_off`.
+- `drums.c`: 2.7's glide fields plus the fork's `#if !FELUCCA_BOOT_BSS` initializer; `gfx.c cv_text`: 2.7's
+  `rgb565_over` ramp plus `font_unpack()`; `icons.c`: the LZ4 block plus the new ramp; `ui_song.c`: "sel: FX
+  rec: store  save: chain".
+- `tools/build.py`: 2.7's retry with `FELUCCA_LOGO_TEXT=1` when the XIP overflows, then the fork's
+  "rebuild with FELUCCA_SAMPLES=lite" message; `symbol_report` kept.
+- The serial console is **out of the default build** since 2.7 (`felucca.c FELUCCA_CDC 0`, 6-8 KB):
+  `FELUCCA_CDC=1 FELUCCA_SAMPLES=lite sh build.sh` is the device-measurement build.
+
+**Flash after the merge:** lite 530,180 B (51,384 free), RAM `.data+.bss` 65,548 B of 98,304, `.lowram` 23,280
+of 29,488, pool 333,636 of 344,064. The full sample set does not link on 2.7.1: 3,000 B over with the boot logo,
+**568 B over with `FELUCCA_LOGO_TEXT=1`** (upstream 2.7.1 alone: 577,920 B, 3,644 free). `lite` is the build.
+
 ## Branch `synth` (13/10/2026)
 
-Current branch `synth` starts at `ram` (`9843161`). [SYNTH.md](SYNTH.md) describes
+`synth` started at `ram` (`9843161`, SLOOP 2.6) and is on SLOOP 2.7.1 since 17/10/2026 (above). [SYNTH.md](SYNTH.md) describes
 the implemented synth series, formats, build profiles and acceptance status.
 The historical **Only the second core** restriction below applies to `dualcore`,
 not `synth`. The synth plan explicitly permits appended golden entries: retain
@@ -10,10 +61,10 @@ all 182 original entries unchanged and append only the sixteen new presets.
 Do not blanket-refresh hashes or CPU baselines. Preserve neutral-default audio
 under every dual-core mode, and keep per-part rendering state independent.
 
-Build this feature set with `FELUCCA_SAMPLES=lite sh build.sh` (526,964 B, 54,600
-free). Since 13/10 the default full sample library links again, with 232 bytes to
-spare (the screen font is an LZ4 block unpacked into RAM, `gfx.c font_unpack`): do
-not count on it surviving an upstream merge. `tests/run_tests.sh` renders the
+Build this feature set with `FELUCCA_SAMPLES=lite sh build.sh` (530,180 B, 51,384
+free on 2.7.1). The full sample library linked on 2.6 with 232 bytes to spare (the
+screen font is an LZ4 block unpacked into RAM, `gfx.c font_unpack`); on 2.7.1 it is
+568 bytes over even with the boot logo as text, as predicted. `tests/run_tests.sh` renders the
 goldens for both profiles and compares the two boot-initialization hashes. Keep
 separately generated sample headers for each profile so a target build does not
 change a running host test. Lite keeps every factory preset in the tables and
@@ -31,7 +82,7 @@ Project writes use FUN7; user-preset version 2 uses a 256-byte logical record
 packed to 160 bytes on flash. Keep all legacy readers and the existing A/B
 sector map. Attribution and notices travel with each port.
 
-## Historical dualcore / ram notes
+## Historical dualcore / ram notes (both series are in SLOOP 2.7; kept for the record)
 
 This checkout is a **thin fork** of [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1) (SLOOP, a
 groovebox firmware for the M-VAVE FM-1). Branch `dualcore` adds the FM-1's second processor core to
@@ -142,11 +193,11 @@ it and brings its own `libc.c`. SLOOP's generators run on Apple's Python; X0X's 
 ## Testing
 
 ```sh
-sh tests/run_tests.sh                               # ~3 min; after a build
+sh tests/run_tests.sh                               # ~15 min (the 10-minute soak); after a build
 CORES=2 CHAOS=7 build/host/cpu1_test                # env vars as separate words (zsh does not split a quoted string)
 ```
 
-- One failure is **pre-existing in SLOOP 2.6** (and was in 2.5) and not this branch's: `target_budget`'s
+- (2.6 / 2.5 note, kept for the record; the synth branch measured the budgets against `ram`, see above.) One failure was pre-existing in SLOOP 2.6 (and 2.5) and not this branch's: `target_budget`'s
   `fm1_alnk0_irq` 268 vs 174 and its three FM6 functions without a budget (the upstream budget file is stale),
   so `run_tests.sh` ends with "HOST TESTS FAILED" on a clean run. (2.5's other one, three PHASE presets over the
   host CPU instruction baseline, is gone in 2.6: the baseline now only notes presets that got faster.) Everything
@@ -154,6 +205,12 @@ CORES=2 CHAOS=7 build/host/cpu1_test                # env vars as separate words
   11/10/2026, on the 2.6 merge). 2.6's `tests/font_test.c` needed `#define __attribute__(x)` before its
   `gfx.c` include to compile on macOS (clang refuses the `.pool` section for a host build; hostsim.c has the
   same define): one line, carried here, worth an upstream issue.
+- **17/10/2026, on 2.7.1: the whole suite passes** (198 / 195 golden renders unchanged, every mode of the second core's
+  host double, the web tests; `pwa_test` skips without Playwright, `run_preview_tests` needs the WASM build). Two
+  expectations were the fork's to set: `ui_pages_test` counts ten GLO pages (the synth's REVERB page) and
+  `target_budget.txt` says `drums_mix 6793` (2.7's drum TUNE / DECAY fade and LEVEL / PAN glide; measured the same
+  on upstream 2.7.1 alone, whose own file still says 6153, so upstream's suite stops on it, as it did on the IRQ
+  budget before). `test_web.mjs`: the LIVE page's engine values start at the device's `pe0` (`LVX.e0()`).
 - The second core's host double (`tests/cpu1_host.c`): `CORES=1` runs a job inline but only at
   `cpu1_wait` (the default; deterministic), `CORES=2` on a POSIX thread, `CHAOS=N` with random delays
   before and after each job, `CPU1_TIMEOUT_AT=K` loses the K-th job and holds the core (the fallback path),
@@ -185,8 +242,8 @@ python3 web/make_site.py build/felucca.fwsc dev ../sloop-site && cd ../sloop-sit
 # Chrome or Edge: http://localhost:8000/webapp/installer/
 ```
 
-First boot checklist: ABOUT (hold HOME, SYSTEM, ABOUT) says **2 CORES**; the serial console (MENU > AUDIO >
-USB SERIAL ON, restart; then `screen /dev/tty.usbmodem* 115200` on the Mac, type `status`; there is no `fm1t`
+First boot checklist: ABOUT (hold HOME, SYSTEM, ABOUT) says **2 CORES** and the two supplies (2.7: "1.38V 1.60V"); the serial
+console (only in a `FELUCCA_CDC=1` build since 2.7; MENU > AUDIO > USB SERIAL ON, restart; then `screen /dev/tty.usbmodem* 115200` on the Mac, type `status`; there is no `fm1t`
 tool in SLOOP's tree, the console is a plain USB CDC port) prints `lowram = 1` (2 = a word of the SRAM below the RAM
 region failed the boot test: do not use the build), `stack_free` / `sstack_free` (bytes of core 0's two stacks never
 reached; `sp` tells which region the main loop runs on: note them, they decide the pool's growth), `cpu1 = 3` and
@@ -195,11 +252,10 @@ its entry; `0xC1000001` means it reached the entry but not its loop. Then play: 
 (one means core 1 was held and SLOOP fell back to one core), `cpu1_stack_free` well above 0 on the heaviest
 patterns (core 1's stack is 2,816 B), `cpu1_busy_pct` and `cpu1_wait_pct` plausible (busy well under 100, wait
 small), and `cpu_pct` lower than with MENU > SYSTEM > 2ND CORE OFF on the same pattern (the switch is live and
-the sound does not change). `cpu1 units MASK` in the console changes the split finer (0 = everything on core 0,
+the sound does not change; 2.7: OFF takes effect live, ON only at the next power-on, core 1 is not started while OFF). `cpu1 units MASK` in the console changes the split finer (0 = everything on core 0,
 `cpu1 units auto` = the firmware's share). Rescue: hold OCT- while switching on, then install again. The package
-keeps identity FM-1_900, so the official 2.6 installs back over it (2.5 too, but a project saved by 2.6 does not open
-in 2.5: upstream's note). **On `synth`: a slot or user-preset bank saved by synth (FUN7, preset version 2) reads as
-empty on 2.6: back up with the web editor before installing synth and before going back.** A device that ran the 2.5-based build with 2ND CORE **OFF** saved that in bit 21, which 2.6
+keeps identity FM-1_900, so the official 2.7.1 installs back over it. **On `synth`: a slot or user-preset bank saved by synth (FUN7, preset version 2) reads as
+empty on 2.7.1 and older: back up with the web editor before installing synth and before going back.** A device that ran the 2.5-based build with 2ND CORE **OFF** saved that in bit 21, which 2.6
 reads as GLO > MIDI 2 > IN = CH 1: set IN back to NOTES once, and 2ND CORE as wanted (now bit 26).
 
 ## What the device alone can tell

@@ -8,6 +8,7 @@
  * FELUCCA_CPU1=0 builds without any of it. */
 enum { CPU1_OFF, CPU1_NOSTART, CPU1_FAILED, CPU1_OK };   /* not built / did not report in / self-test wrong / running */
 static uint8_t cpu1_state = CPU1_OFF;
+static uint8_t cpu1_off;                                 /* (panel.c: the menu's 2ND CORE, read from the settings) */
 static uint32_t cpu1_timeouts;                           /* jobs core 1 did not finish in time (console) */
 
 #if FELUCCA_CPU1
@@ -44,6 +45,10 @@ static void cpu1_selftest(uint32_t arg)                  /* runs on core 1, from
  * The PC limits are opened for the start (it boots through the chip's ROM) and armed again after. */
 static void cpu1_boot(void)
 {
+    cpu1_units = cpu1_off ? 0 : -1;                      /* (the settings were read before: persist_boot) */
+    if (cpu1_off)                                        /* 2.7: 2ND CORE OFF (ON is the default): core 1 is never started,
+                                                          * the boot is 2.6's; ON takes effect at the next power-on */
+        return;
     fm1_guard_pc_open();
     if (fm1_cpu1_start() != 0) {
         fm1_guard_enable(FM1_GUARD_PC);
@@ -64,6 +69,15 @@ static const char *cpu1_label(void)                      /* ABOUT: the hardware'
                                                           * it shares its row with the licence line) */
 {
     return cpu1_state != CPU1_OK ? "1 CORE" : cpu1_units ? "2 CORES" : "C1 OFF";
+}
+/* (2.7) ABOUT: the two supplies as they are now (fm1_sys.h), "1.38V 1.60V": SYSVDD, VDC14 */
+static void cpu1_supplies(char *b)
+{
+    uint32_t s = 930u + 30u * fm1_sysvdd(), v = 1250u + 50u * fm1_vdc14();
+    b[0] = (char)('0' + s / 1000u), b[1] = '.', b[2] = (char)('0' + s / 100u % 10u), b[3] = (char)('0' + s / 10u % 10u);
+    b[4] = 'V', b[5] = ' ';
+    b[6] = (char)('0' + v / 1000u), b[7] = '.', b[8] = (char)('0' + v / 100u % 10u), b[9] = (char)('0' + v / 10u % 10u);
+    b[10] = 'V', b[11] = 0;
 }
 
 /* bytes of core 1's user stack never written: fm1_cpu1_start filled it with a mark; the render on core 1

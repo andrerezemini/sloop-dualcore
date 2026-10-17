@@ -8,6 +8,8 @@
 # (174 was the stale upstream budget). It remains268 in synth; this is no DSP rebaseline.
 # Previously missing FM6 budgets are measured on that same ram base, not relaxed from synth.
 # New synth functions have explicit target measurements below; every other budget stays unchanged.
+# 17/10/2026, on SLOOP 2.7.1: drums_mix 6153 -> 6793, measured identical on upstream 2.7.1 alone (2.7's drum TUNE /
+# DECAY fade and the LEVEL / PAN glide in the loop; upstream's own file still says 6153 and its suite stops there).
 analog_render 638
 digital_render 333
 phase_render 79
@@ -21,7 +23,7 @@ drawbar_block 102
 grain_render 1734
 grain_block 138
 slicer_track 825
-drums_mix 6153
+drums_mix 6793
 fm1_alnk0_irq 268
 fm6_op_run 72
 fm6_op_fb 26

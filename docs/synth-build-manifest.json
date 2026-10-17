@@ -1,11 +1,39 @@
 {
-  "scope": "Integrated synth firmware after the corrections of 2026-10-13; hardware validation pending",
-  "note": "The packages of 2026-10-12 (firmware bc9b5b0, lite 528,376 B) are superseded; sizes below are from the corrected tree, measured with tools/build.py (build/flash-report.json holds the per-build figures and symbol list).",
+  "scope": "Integrated synth firmware on SLOOP 2.7.1 (merge of 2026-10-17); hardware validation pending",
+  "note": "The figures of 2026-10-13 (on SLOOP 2.6: full 581,332 B / 232 free, lite 526,964 B / 54,600 free, RAM 64,908 B) are superseded by the merge with SLOOP 2.7.1; sizes below are measured with tools/build.py on the merged tree (build/flash-report.json holds the per-build figures and symbol list).",
   "profiles": {
-    "full": {"image_bytes": 581332, "headroom": 232, "sections": {"data_bss": 64908, "lr": 23280, "pool": 333636}},
-    "lite": {"image_bytes": 526964, "headroom": 54600, "sections": {"data_bss": 64908, "lr": 23280, "pool": 333636}}
+    "full": {
+      "links": false,
+      "over_by_bytes": 568,
+      "with": "FELUCCA_LOGO_TEXT=1 (build.py's own retry); 3000 over with the boot logo"
+    },
+    "lite": {
+      "image_bytes": 530180,
+      "headroom": 51384,
+      "sections": {
+        "data_bss": 65548,
+        "lr": 23280,
+        "pool": 333636
+      }
+    }
   },
-  "options": {"FELUCCA_COLD": true, "FELUCCA_BOOT_BSS": true, "FELUCCA_ASSET_LZ4": true, "FELUCCA_FPU_PROBE": false, "FELUCCA_CPU1": true},
-  "golden_renders": {"original": 182, "appended": 16},
-  "hardware": "not yet flashed"
+  "options": {
+    "FELUCCA_COLD": true,
+    "FELUCCA_BOOT_BSS": true,
+    "FELUCCA_ASSET_LZ4": true,
+    "FELUCCA_FPU_PROBE": false,
+    "FELUCCA_CPU1": true
+  },
+  "golden_renders": {
+    "original": 182,
+    "appended": 16
+  },
+  "hardware": "not yet flashed",
+  "upstream": {
+    "version": "SLOOP 2.7.1",
+    "commit": "4ec1ac8",
+    "image_bytes": 577920,
+    "headroom": 3644,
+    "data_bss": 58892
+  }
 }
